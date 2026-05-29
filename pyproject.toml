@@ -1,20 +1,43 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "xmd"
-version = "0.0.2"
-description = "XMD — a runtime that executes documents. The document becomes the system."
+dynamic = ["version"]
+description = "A runtime that turns Markdown-like documents into running systems."
 readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Subham Divakar", email = "shubham.divakar@gmail.com" }]
-license = { text = "MIT" }
-keywords = ["xmd", "runtime", "documents", "agents", "markdown"]
+keywords = ["xmd", "runtime", "documents", "agents", "markdown", "workflow", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Utilities",
+]
 dependencies = []  # stdlib only — zero dependencies by design
+
+[project.urls]
+Homepage = "https://github.com/shubham10divakar/xmd"
+Repository = "https://github.com/shubham10divakar/xmd"
+Issues = "https://github.com/shubham10divakar/xmd/issues"
 
 [project.scripts]
 xmd = "xmd.cli:main"
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.setuptools.dynamic]
+version = { attr = "xmd.__version__" }
 
-[tool.hatch.build.targets.wheel]
-packages = ["xmd"]
+[tool.setuptools.packages.find]
+include = ["xmd*"]

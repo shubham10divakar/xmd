@@ -41,9 +41,7 @@ def run(
     if not workflows:
         out("No workflow to run.")
     for wf in workflows:
-        out(f"\n▶ workflow: {wf.name or '(unnamed)'}")
-        for idx, step in enumerate(wf.steps, 1):
-            _run_step(idx, step, memory, ctx, out)
+        run_workflow(wf, memory, ctx, out)
 
     hooks_sec = doc.section("on_done")
     if hooks_sec:
@@ -99,12 +97,27 @@ def watch(
         out("\n· stopped")
 
 
-def _run_step(idx, step, memory, ctx, out) -> None:
+def run_workflow(wf, memory, ctx, out) -> bool:
+    """Run one workflow's steps; returns True if every step succeeded."""
+    out(f"\n▶ workflow: {wf.name or '(unnamed)'}")
+    return run_steps(wf.steps, memory, ctx, out)
+
+
+def run_steps(steps, memory, ctx, out) -> bool:
+    """Run a list of steps top-to-bottom; returns True if all succeeded."""
+    ok_all = True
+    for idx, step in enumerate(steps, 1):
+        if not _run_step(idx, step, memory, ctx, out):
+            ok_all = False
+    return ok_all
+
+
+def _run_step(idx, step, memory, ctx, out) -> bool:
     plugin = plugins.get(step.plugin)
     label = f"  step {idx} @{step.plugin}"
     if plugin is None:
         out(f"{label} ✗ unknown plugin")
-        return
+        return False
     params = {k: substitute(v, memory) for k, v in step.params.items()}
     result = plugin(params, ctx)
     if result.ok:
@@ -113,6 +126,7 @@ def _run_step(idx, step, memory, ctx, out) -> None:
     else:
         out(f"{label} ✗ (exit {result.code})")
         _emit(result.error or result.output, out)
+    return result.ok
 
 
 def _emit(text, out) -> None:

@@ -32,6 +32,15 @@ def main(argv=None) -> int:
     pw.add_argument("--max-runs", type=int, default=0, help="stop after N runs (0=forever)")
     pw.add_argument("--no-write", action="store_true", help="do not write memory back")
 
+    pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
+    pa.add_argument("file")
+    pa.add_argument("--replan", action="store_true", help="regenerate tasks from the goal")
+    pa.add_argument("--autonomous", action="store_true",
+                    help="let the LLM generate + RUN steps for tasks with no workflow link")
+    pa.add_argument("--model", help="LLM model id for planning/generation")
+    pa.add_argument("--max-tokens", type=int, default=1024)
+    pa.add_argument("--dry-run", action="store_true", help="plan/show without executing or writing")
+
     pp = sub.add_parser("parse", help="print parsed structure as JSON")
     pp.add_argument("file")
 
@@ -51,6 +60,16 @@ def main(argv=None) -> int:
             max_runs=args.max_runs,
             write_back=not args.no_write,
             out=flush,
+        )
+    elif args.cmd == "agent":
+        from . import agent
+        agent.agent_run(
+            args.file,
+            replan=args.replan,
+            autonomous=args.autonomous,
+            model=args.model,
+            max_tokens=args.max_tokens,
+            dry_run=args.dry_run,
         )
     elif args.cmd == "parse":
         print(json.dumps(asdict(_load(args.file)), indent=2))

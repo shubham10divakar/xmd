@@ -5,7 +5,7 @@
 > the system** — documentation, configuration, workflow, and memory in one file
 > that both **humans and AI agents** can read, write, and run.
 
-[![status](https://img.shields.io/badge/status-v0.0.2-blue)](./SPEC-v0.0.2.md)
+[![status](https://img.shields.io/badge/status-v0.0.3-blue)](./SPEC-v0.0.3.md)
 [![deps](https://img.shields.io/badge/dependencies-zero-brightgreen)](#)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)](#)
 
@@ -183,6 +183,7 @@ A step is `- @<plugin>` plus params. Built in:
 | `@http`   | HTTP request | `url`, `method`, `body`, `content_type` |
 | `@write`  | Write a file (creates dirs) | `path`, `content` |
 | `@read`   | Read a file into output | `path` |
+| `@llm`    | Ask an LLM (Anthropic; key from `ANTHROPIC_API_KEY`) | `prompt`, `model`, `max_tokens` |
 
 **Any language, no bundling.** Language plugins just hand your code to the
 interpreter already on your machine. If it's missing, the step fails with a clear
@@ -237,13 +238,43 @@ write-back — only your edits trigger a re-run.
 
 ---
 
+## Agents — let a goal drive itself
+
+`xmd agent` turns the document from *a program you run* into *a goal that pursues
+itself* (the vision's Layer 7):
+
+```text
+Read @goal → plan @tasks → execute each task → update @memory → write back
+```
+
+```bash
+xmd agent project.xmd              # plan (if no tasks), then run linked workflows
+xmd agent project.xmd --replan     # regenerate tasks from the goal
+xmd agent project.xmd --autonomous # let the LLM generate AND run steps for unlinked tasks
+xmd agent project.xmd --dry-run    # show the plan without executing or writing
+```
+
+**Two ways a task gets done:**
+1. **Explicit workflow link (safe, default):** annotate a task and the agent runs
+   that workflow — `- [ ] write the note -> write_note`.
+2. **LLM-emitted steps (`--autonomous`):** for a task with no link, the LLM
+   generates the steps and the agent runs them. Opt-in, because it executes
+   model-generated commands.
+
+Planning uses `@llm` (set `ANTHROPIC_API_KEY`). With no key, the agent skips
+planning and still runs any pre-existing workflow-linked tasks. `xmd agent` is the
+one command allowed to author `@tasks`; mechanical write-back stays restricted to
+`runtime.*` (see field ownership above). See [`examples/AGENT.xmd`](./examples/AGENT.xmd).
+
 ## Commands
 
 ```bash
-xmd run <file> [--workflow NAME] [--no-write]      # execute; persist memory
-xmd watch <file> [--interval S] [--max-runs N]     # re-run on change
-xmd parse <file>                                   # show parsed structure as JSON
-xmd validate <file>                                # check it parses; list sections
+xmd run <file> [--workflow NAME] [--no-write]                 # execute; persist memory
+xmd watch <file> [--interval S] [--max-runs N]                # re-run on change
+xmd agent <file> [--replan] [--autonomous] [--dry-run]        # goal -> tasks -> run
+                 [--model M] [--max-tokens N]
+xmd parse <file>                                              # parsed structure as JSON
+xmd validate <file>                                           # check it parses; list sections
 xmd --version
 ```
 
@@ -262,15 +293,16 @@ xmd --version
 
 ## Status & roadmap
 
-**Current: v0.0.2** — see [`SPEC-v0.0.2.md`](./SPEC-v0.0.2.md) for the exact contract.
+**Current: v0.0.3** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the exact contract.
 
-- ✅ Parser, executor, CLI (`run` / `parse` / `validate`)
-- ✅ Plugins: shell, inline languages, http, filesystem
+- ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `parse` / `validate`)
+- ✅ Plugins: shell, inline languages, http, filesystem, llm
 - ✅ Memory: read / substitute / write-back, with field-ownership safety
 - ✅ Reactive `xmd watch`
+- ✅ Agent engine (`@goal` → auto-generate `@tasks` → execute → update memory)
 - ⏳ Declarative events (`@on_file_change`, `@daily`, `@on_commit`)
-- ⏳ Agent engine (`@goal` → auto-generate `@tasks` → execute → update)
 - ⏳ Portable `@task` abstraction (run the same intent via any language)
+- ⏳ Multi-agent / distributed (XOS)
 
 This is early software with a large vision. Contributions and ideas welcome.
 

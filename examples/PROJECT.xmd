@@ -1,0 +1,25 @@
+# Project: XMD Runtime
+
+@goal
+Ship xmd v0.0.1 — a runtime that executes this very file.
+
+@memory
+last_session: "built v0.0.1 — parser, executor, CLI, plugins all working; dogfood test passed"
+runtime.status: "checked"
+
+@tasks
+- [x] design PROJECT.xmd
+- [x] write SPEC-v0.0.1
+- [x] build parser
+- [x] build executor + CLI
+
+@workflow build_and_check
+- @print
+  text: Last session: {{ memory.last_session }}
+- @shell
+  run: echo XMD runtime is alive
+- @python
+  run: print("hello from the python plugin")
+
+@on_done
+set: memory.runtime.status = "checked"

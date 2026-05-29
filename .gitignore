@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# XMD scratch
+out/
+examples/_*.xmd
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

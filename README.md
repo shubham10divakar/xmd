@@ -5,7 +5,9 @@
 > the system** — documentation, configuration, workflow, and memory in one file
 > that both **humans and AI agents** can read, write, and run.
 
-[![status](https://img.shields.io/badge/status-v0.0.3-blue)](./SPEC-v0.0.3.md)
+[![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/runxmd)](https://pypi.org/project/runxmd/)
+[![status](https://img.shields.io/badge/status-v1.0.0-blue)](./SPEC-v0.0.3.md)
 [![deps](https://img.shields.io/badge/dependencies-zero-brightgreen)](#)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)](#)
 
@@ -91,6 +93,12 @@ like a teammate*, that's what XMD is for.
 Zero third-party dependencies — pure Python standard library (≥ 3.9).
 
 ```bash
+pip install runxmd
+```
+
+Or from source:
+
+```bash
 git clone https://github.com/shubham10divakar/xmd.git
 cd xmd
 pip install -e .
@@ -153,21 +161,104 @@ document changed itself.
 
 ---
 
-## The `.xmd` format
+## The `.xmd` format — and how it differs from `.md`
 
-A file is plain UTF-8 text. An optional title (`# ...`), then sections introduced
-by `@directives`. Each section uses the grammar most natural to what it is:
+Plain Markdown (`.md`) is **read-only prose.** A viewer renders it; nothing runs.
+XMD (`.xmd`) keeps everything Markdown has — human-readable, writable in any
+editor, renderable in any viewer — and adds one thing: **a runtime that executes it.**
 
-| Section            | What it is            | Grammar |
-|--------------------|-----------------------|---------|
-| `@goal`            | Human/agent intent    | free prose |
-| `@memory`          | State that persists   | `key: value` lines |
-| `@tasks`           | A checklist           | `- [ ]` / `- [x]` |
-| `@workflow <name>` | Ordered steps to run  | `- @plugin` + indented `key: value` |
-| `@on_done`         | Hooks after the run   | `set: memory.runtime.x = value` |
+### Side-by-side: the same "project doc" in `.md` vs `.xmd`
 
-Workflow steps run top to bottom. A `key: |` line starts a multi-line block (handy
-for code).
+**A normal Markdown project doc (`.md`):**
+
+```markdown
+# Deploy Staging
+
+Last run: manually on 2024-01-15
+
+## Steps
+1. Pull latest image
+2. Run migration
+3. Restart service
+
+> Status: unknown
+```
+
+This is useful to read. It does nothing on its own. To actually run it, you need
+a separate shell script, a CI pipeline, or someone following the steps by hand.
+The "Last run" date goes stale the moment you forget to update it.
+
+---
+
+**The same thing as an XMD document (`.xmd`):**
+
+```text
+# Deploy Staging
+
+@goal
+Deploy the latest image to staging and verify it.
+
+@memory
+last_run: "never"
+runtime.status: "unknown"
+
+@tasks
+- [ ] pull image
+- [ ] run migration
+- [ ] restart service
+
+@workflow deploy
+- @shell
+  run: docker pull myapp:latest
+- @shell
+  run: docker exec myapp python manage.py migrate
+- @shell
+  run: docker restart myapp
+- @http
+  url: https://staging.myapp.com/health
+
+@on_done
+set: memory.runtime.status = "deployed"
+```
+
+```bash
+runxmd run deploy.xmd
+```
+
+Now the steps actually run. `last_run` is read in, `runtime.status` is written
+back. The file updates itself. Tomorrow, a person or an agent reads the same file
+and knows exactly what happened.
+
+---
+
+### What XMD adds on top of Markdown
+
+| Feature | Plain `.md` | `.xmd` |
+|---------|-------------|--------|
+| Human-readable | ✅ | ✅ |
+| Works in any text editor | ✅ | ✅ |
+| Renders in GitHub / viewers | ✅ | ✅ |
+| Steps actually execute | ❌ | ✅ via `@workflow` |
+| State persists between runs | ❌ | ✅ via `@memory` + write-back |
+| `{{ variables }}` resolve live | ❌ | ✅ |
+| Document updates itself | ❌ | ✅ |
+| Agent can author + run it | ❌ | ✅ |
+
+### The `@directive` sections
+
+A file is plain UTF-8. An optional `# Title`, then sections opened by `@directives`.
+Each uses the grammar most natural to what it is:
+
+| Section            | What it is                   | Grammar |
+|--------------------|------------------------------|---------|
+| `@goal`            | Human/agent intent           | free prose |
+| `@memory`          | State that persists          | `key: value` lines |
+| `@tasks`           | A checklist                  | `- [ ]` / `- [x]` |
+| `@workflow <name>` | Ordered steps to execute     | `- @plugin` + indented `key: value` |
+| `@on_done`         | Hooks that run after finish  | `set: memory.runtime.x = value` |
+
+Workflow steps run top to bottom. A `key: |` line starts a multi-line block
+(handy for inline code).
 
 ---
 
@@ -293,7 +384,7 @@ runxmd --version
 
 ## Status & roadmap
 
-**Current: v0.0.3** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the exact contract.
+**Current: v1.0.0** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the exact contract.
 
 - ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `parse` / `validate`)
 - ✅ Plugins: shell, inline languages, http, filesystem, llm

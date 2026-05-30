@@ -1,9 +1,8 @@
-# XMD — a runtime that turns documents into running systems
+# runxmd — run your Markdown files
 
-> **HTML needed a browser to become useful. XMD needs a runtime to become a system.**
-> Without the runtime, an `.xmd` file is just text. With it, the **document becomes
-> the system** — documentation, configuration, workflow, and memory in one file
-> that both **humans and AI agents** can read, write, and run.
+> **You already write `.md` files. Now you can run them.**
+> Add a `@workflow` section to any Markdown doc and `runxmd` executes it —
+> the same file your team reads is also the program, the config, and the memory.
 
 [![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
 [![Downloads](https://static.pepy.tech/badge/runxmd)](https://pepy.tech/project/runxmd)
@@ -13,186 +12,43 @@
 
 ---
 
-## What is XMD?
+## The idea in one sentence
 
-XMD is a tiny runtime that **executes Markdown-like documents.** You write a plain
-`.xmd` file describing a goal, some state, a checklist, and a workflow — and the
-runtime *runs* it: executes the steps, remembers state across runs, and writes the
-results back into the same file.
-
-```text
-# Project: Nightly Report
-
-@goal
-Pull yesterday's numbers and save a report.
-
-@memory
-last_run: "never"
-
-@workflow nightly
-- @http
-  url: https://api.example.com/metrics
-- @write
-  path: reports/today.json
-  content: "{{ memory.last_run }} -> done"
-
-@on_done
-set: memory.runtime.status = "ok"
-```
-
-```bash
-runxmd run report.xmd      # runs the workflow, then updates @memory in the file
-runxmd watch report.xmd    # re-runs automatically whenever you edit the file
-```
-
-That's the whole idea: **one document is the program, its config, its state, and
-its documentation — all at once.**
+`runxmd` is a runtime that makes Markdown files executable. You keep writing `.md`
+files exactly as you do today — they still render in GitHub, VS Code, and every
+Markdown viewer. You just also get to *run* them.
 
 ---
 
-## What is it aimed at? (the why)
+## What changes in your Markdown file? Almost nothing.
 
-Today, a single automated task is scattered across many systems: a YAML config, a
-shell script, a README that explains it, a database row that remembers state, a
-cron entry that triggers it. They drift apart and only a developer can follow the
-thread.
+Take a doc you already have. Add `@workflow`, `@memory`, and `@tasks` sections.
+They look like normal Markdown sections — because they are. The runtime just knows
+how to execute them.
 
-XMD collapses them into **one readable artifact.** The goal is not "Markdown that
-runs code" — it's making the **document the primary unit of computation.**
-
-And there's a specific reason that matters *now*: **AI agents already live in
-documents.** They read instruction files, write notes to remember things, and
-track tasks as Markdown — but they get nothing executable back. XMD is the missing
-runtime beneath all of that.
-
-- **Agents are the native user** — an `.xmd` file is just structured Markdown, so
-  an agent can author and maintain it correctly with no special training.
-- **Humans are the adopter** — you install it, point it at a file, and trust it
-  with real work today.
-- **The document is the contract between them** — both read, write, and run the
-  same file, safely (see [Field ownership](#memory--state-that-survives)).
-
-If you've ever wanted a script you can *read like a doc* and an agent can *maintain
-like a teammate*, that's what XMD is for.
-
----
-
-## Who is this for?
-
-- **Automators / devops** who are tired of bash + YAML + cron sprawl and want one
-  legible file per task.
-- **AI / agent builders** who want agents to own runnable, stateful documents
-  instead of inert notes.
-- **Anyone** who wants a lightweight, dependency-free way to describe and run
-  small workflows that remember things between runs.
-
----
-
-## Install
-
-Zero third-party dependencies — pure Python standard library (≥ 3.9).
-
-```bash
-pip install runxmd
-```
-
-Or from source:
-
-```bash
-git clone https://github.com/shubham10divakar/xmd.git
-cd xmd
-pip install -e .
-```
-
-Now the `runxmd` command is available. Or run without installing:
-
-```bash
-python -m runxmd.cli run examples/PROJECT.xmd
-```
-
----
-
-## Quick start
-
-Create `hello.xmd`:
-
-```text
-# Hello XMD
-
-@goal
-Prove the runtime works.
-
-@memory
-name: "world"
-
-@workflow hello
-- @print
-  text: "hello {{ memory.name }}"
-- @shell
-  run: echo "shell works too"
-- @python
-  run: |
-    print("and so does python")
-
-@on_done
-set: memory.runtime.ran_at = "now"
-```
-
-Run it:
-
-```bash
-runxmd run hello.xmd
-```
-
-```text
-▶ workflow: hello
-  step 1 @print ✓
-      hello world
-  step 2 @shell ✓
-      shell works too
-  step 3 @python ✓
-      and so does python
-
-· memory written back
-```
-
-Open `hello.xmd` again — the runtime added `runtime.ran_at` to `@memory`. The
-document changed itself.
-
----
-
-## The `.xmd` format — and how it differs from `.md`
-
-Plain Markdown (`.md`) is **read-only prose.** A viewer renders it; nothing runs.
-XMD (`.xmd`) keeps everything Markdown has — human-readable, writable in any
-editor, renderable in any viewer — and adds one thing: **a runtime that executes it.**
-
-### Side-by-side: the same "project doc" in `.md` vs `.xmd`
-
-**A normal Markdown project doc (`.md`):**
+**Before — a plain Markdown doc:**
 
 ```markdown
 # Deploy Staging
 
-Last run: manually on 2024-01-15
-
-## Steps
+Steps:
 1. Pull latest image
-2. Run migration
+2. Run migration  
 3. Restart service
 
-> Status: unknown
+Last run: manually on 2024-01-15
+Status: unknown
 ```
 
-This is useful to read. It does nothing on its own. To actually run it, you need
-a separate shell script, a CI pipeline, or someone following the steps by hand.
-The "Last run" date goes stale the moment you forget to update it.
+Useful to read. Does nothing. To actually run it you need a separate shell script,
+a CI pipeline, or someone following the steps by hand. The "Last run" date goes
+stale the moment you forget to update it.
 
 ---
 
-**The same thing as an XMD document (`.xmd`):**
+**After — the same doc, now runnable:**
 
-```text
+```markdown
 # Deploy Staging
 
 @goal
@@ -222,169 +78,234 @@ set: memory.runtime.status = "deployed"
 ```
 
 ```bash
-runxmd run deploy.xmd
+runxmd run deploy.md
 ```
 
-Now the steps actually run. `last_run` is read in, `runtime.status` is written
-back. The file updates itself. Tomorrow, a person or an agent reads the same file
-and knows exactly what happened.
+Now the steps run. `runtime.status` is written back into the file. Next time
+anyone opens it — human or agent — they can see exactly what happened and when.
+The doc and the system are the same thing.
 
 ---
 
-### What XMD adds on top of Markdown
+## What you gain without giving anything up
 
-| Feature | Plain `.md` | `.xmd` |
-|---------|-------------|--------|
-| Human-readable | ✅ | ✅ |
-| Works in any text editor | ✅ | ✅ |
-| Renders in GitHub / viewers | ✅ | ✅ |
-| Steps actually execute | ❌ | ✅ via `@workflow` |
-| State persists between runs | ❌ | ✅ via `@memory` + write-back |
+| | Plain `.md` | `.md` + runxmd |
+|--|-------------|----------------|
+| Reads in GitHub / VS Code | ✅ | ✅ |
+| Human-readable prose | ✅ | ✅ |
+| Edit in any text editor | ✅ | ✅ |
+| Steps actually execute | ❌ | ✅ |
+| State persists between runs | ❌ | ✅ |
 | `{{ variables }}` resolve live | ❌ | ✅ |
-| Document updates itself | ❌ | ✅ |
-| Agent can author + run it | ❌ | ✅ |
+| File updates itself after running | ❌ | ✅ |
+| AI agent can author and run it | ❌ | ✅ |
 
-### The `@directive` sections
-
-A file is plain UTF-8. An optional `# Title`, then sections opened by `@directives`.
-Each uses the grammar most natural to what it is:
-
-| Section            | What it is                   | Grammar |
-|--------------------|------------------------------|---------|
-| `@goal`            | Human/agent intent           | free prose |
-| `@memory`          | State that persists          | `key: value` lines |
-| `@tasks`           | A checklist                  | `- [ ]` / `- [x]` |
-| `@workflow <name>` | Ordered steps to execute     | `- @plugin` + indented `key: value` |
-| `@on_done`         | Hooks that run after finish  | `set: memory.runtime.x = value` |
-
-Workflow steps run top to bottom. A `key: |` line starts a multi-line block
-(handy for inline code).
+No new file format. No new tool to learn. Just your Markdown, with a runtime behind it.
 
 ---
 
-## Plugins (what steps can do)
+## Install
 
-A step is `- @<plugin>` plus params. Built in:
+```bash
+pip install runxmd
+```
+
+Zero third-party dependencies — pure Python standard library (≥ 3.9).
+
+Or from source:
+
+```bash
+git clone https://github.com/shubham10divakar/xmd.git
+cd xmd
+pip install -e .
+```
+
+---
+
+## Quick start
+
+Add runnable sections to any `.md` file:
+
+```markdown
+# Hello
+
+@memory
+name: "world"
+
+@workflow hello
+- @print
+  text: "hello {{ memory.name }}"
+- @shell
+  run: echo "shell works too"
+- @python
+  run: |
+    print("and so does python")
+
+@on_done
+set: memory.runtime.ran_at = "now"
+```
+
+Run it:
+
+```bash
+runxmd run hello.md
+```
+
+```text
+▶ workflow: hello
+  step 1 @print ✓
+      hello world
+  step 2 @shell ✓
+      shell works too
+  step 3 @python ✓
+      and so does python
+
+· memory written back
+```
+
+Open the file again — `runtime.ran_at` is now in `@memory`. The document updated
+itself.
+
+---
+
+## The runnable sections
+
+You add these to any Markdown file. Each one uses the grammar most natural to what
+it is:
+
+| Section            | What it does                        | Grammar |
+|--------------------|-------------------------------------|---------|
+| `@goal`            | Describes the intent (human/agent)  | free prose |
+| `@memory`          | State that persists across runs     | `key: value` lines |
+| `@tasks`           | A checklist the agent can tick      | `- [ ]` / `- [x]` |
+| `@workflow <name>` | Steps to execute in order           | `- @plugin` + params |
+| `@on_done`         | Runs after the workflow finishes    | `set: memory.runtime.x = value` |
+
+Everything else in the file — prose, headings, tables, links — is untouched.
+The runtime only acts on `@` sections.
+
+---
+
+## Plugins (what a step can do)
+
+A step is `- @plugin` plus indented params:
 
 | Plugin    | Does | Key params |
 |-----------|------|-----------|
-| `@print`  | Echo text (after substitution) | `text` |
+| `@print`  | Print text (with substitution) | `text` |
 | `@shell`  | Run a shell command | `run` |
-| `@python` `@node` `@ruby` `@bash` | Run inline code in that language | `run` (block) |
-| `@http`   | HTTP request | `url`, `method`, `body`, `content_type` |
+| `@python` `@node` `@ruby` `@bash` | Run inline code | `run` (multiline block) |
+| `@http`   | Make an HTTP request | `url`, `method`, `body` |
 | `@write`  | Write a file (creates dirs) | `path`, `content` |
 | `@read`   | Read a file into output | `path` |
-| `@llm`    | Ask an LLM (Anthropic; key from `ANTHROPIC_API_KEY`) | `prompt`, `model`, `max_tokens` |
+| `@llm`    | Ask an LLM (needs `ANTHROPIC_API_KEY`) | `prompt`, `model`, `max_tokens` |
 
-**Any language, no bundling.** Language plugins just hand your code to the
-interpreter already on your machine. If it's missing, the step fails with a clear
-message *and the run continues* — XMD never installs anything for you.
-
-```text
-- @ruby
-  run: puts "only runs if ruby is installed"
-```
-```text
-  step 1 @ruby ✗ (exit 127)
-      'ruby' not found on this machine — install it to run @ruby steps, or skip this step.
-```
+**Detect, don't install.** Language plugins use whatever is already on your machine.
+If `ruby` is missing, the step fails clearly and the run continues — runxmd never
+installs anything for you.
 
 ---
 
-## Memory — state that survives
+## Memory — state that lives in the file
 
-`@memory` is what makes a document a *system* instead of a script. Three powers:
+`@memory` is what makes a Markdown file a *system* instead of a static doc.
 
-1. **Read-in** — loaded into a live store when the run starts.
-2. **Substitution** — `{{ memory.key }}` anywhere in a step is replaced with the
-   value before it runs.
-3. **Write-back** — changes are written back into the file, so the next run
-   remembers.
+1. **Read-in** — memory keys are loaded when the run starts.
+2. **Substitution** — `{{ memory.key }}` anywhere in a step is replaced live.
+3. **Write-back** — changes are written back into the file after the run.
 
-### Field ownership (safe co-editing)
+### Safe co-editing (field ownership)
 
-Because both you/an agent *and* the runtime write to the file, ownership is split
-so they can't clobber each other:
+Both you and the runtime write to the same file, so ownership is split:
 
-- **`runtime.*` keys belong to the runtime.** Only it writes them (via `@on_done`).
-- **Every other key belongs to you/the agent.** The runtime reads and preserves
-  them but will **never** overwrite them. A hook that tries is refused with a
-  warning.
+- **`runtime.*` keys** — only the runtime writes these (via `@on_done`).
+- **Everything else** — yours. The runtime reads and preserves them but will
+  **never** overwrite them. A hook that tries is refused with a warning.
 
-So `{{ memory.notes }}` (yours) is safe; `{{ memory.runtime.status }}` is the
-runtime's to manage. Safe by design, not by luck.
+Your `{{ memory.notes }}` is safe. `{{ memory.runtime.status }}` is the runtime's
+to manage. Safe by design, not by convention.
 
 ---
 
-## Reacting to changes — `runxmd watch`
+## Watch mode — re-run on save
 
 ```bash
-runxmd watch report.xmd                 # re-run on every save
-runxmd watch report.xmd --interval 0.5  # poll faster
-runxmd watch report.xmd --max-runs 3    # stop after 3 runs (great for CI)
+runxmd watch report.md                 # re-run whenever you save
+runxmd watch report.md --interval 0.5  # poll faster
+runxmd watch report.md --max-runs 3    # stop after 3 runs (great for CI)
 ```
 
-`watch` re-runs whenever the file changes. It will **not** loop on its own
-write-back — only your edits trigger a re-run.
+`watch` detects saves and re-runs. It will **not** loop on its own write-back —
+only your edits trigger a re-run.
 
 ---
 
-## Agents — let a goal drive itself
+## Agent mode — let the goal drive itself
 
-`runxmd agent` turns the document from *a program you run* into *a goal that pursues
-itself* (the vision's Layer 7):
+`runxmd agent` turns the doc from *a program you run* into *a goal that runs
+itself*:
 
 ```text
 Read @goal → plan @tasks → execute each task → update @memory → write back
 ```
 
 ```bash
-runxmd agent project.xmd              # plan (if no tasks), then run linked workflows
-runxmd agent project.xmd --replan     # regenerate tasks from the goal
-runxmd agent project.xmd --autonomous # let the LLM generate AND run steps for unlinked tasks
-runxmd agent project.xmd --dry-run    # show the plan without executing or writing
+runxmd agent project.md              # plan (if no tasks), then run linked workflows
+runxmd agent project.md --replan     # regenerate tasks from the goal
+runxmd agent project.md --autonomous # LLM generates AND runs steps for unlinked tasks
+runxmd agent project.md --dry-run    # show the plan without executing or writing
 ```
 
 **Two ways a task gets done:**
-1. **Explicit workflow link (safe, default):** annotate a task and the agent runs
-   that workflow — `- [ ] write the note -> write_note`.
-2. **LLM-emitted steps (`--autonomous`):** for a task with no link, the LLM
-   generates the steps and the agent runs them. Opt-in, because it executes
-   model-generated commands.
+1. **Workflow link (safe, default):** `- [ ] run migration -> deploy` — the agent
+   runs the named workflow and ticks the task.
+2. **LLM-emitted steps (`--autonomous`):** the LLM generates steps for unlinked
+   tasks and the agent runs them. Opt-in, because it executes model-generated commands.
 
-Planning uses `@llm` (set `ANTHROPIC_API_KEY`). With no key, the agent skips
-planning and still runs any pre-existing workflow-linked tasks. `runxmd agent` is the
-one command allowed to author `@tasks`; mechanical write-back stays restricted to
-`runtime.*` (see field ownership above). See [`examples/AGENT.xmd`](./examples/AGENT.xmd).
+Planning requires `ANTHROPIC_API_KEY`. Without it, the agent skips planning and
+runs any pre-existing linked tasks. See [`examples/AGENT.xmd`](./examples/AGENT.xmd).
+
+---
 
 ## Commands
 
 ```bash
-runxmd run <file> [--workflow NAME] [--no-write]                 # execute; persist memory
-runxmd watch <file> [--interval S] [--max-runs N]                # re-run on change
-runxmd agent <file> [--replan] [--autonomous] [--dry-run]        # goal -> tasks -> run
-                 [--model M] [--max-tokens N]
-runxmd parse <file>                                              # parsed structure as JSON
-runxmd validate <file>                                           # check it parses; list sections
+runxmd run <file> [--workflow NAME] [--no-write]
+runxmd watch <file> [--interval S] [--max-runs N] [--no-write]
+runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
+runxmd parse <file>
+runxmd validate <file>
 runxmd --version
 ```
 
 ---
 
+## Why this matters now
+
+AI agents already live in Markdown. They read instruction files, write notes,
+track tasks with `- [ ]` checklists — but when they write a doc, nothing runs.
+The doc and the system are always two separate things that drift apart.
+
+`runxmd` closes that gap. An agent can write a `.md` file, you can point the
+runtime at it, and it executes. The doc is the system. No translation layer.
+
+---
+
 ## Design principles
 
-- **One file format.** Meaning lives in `@directives`, not in a zoo of extensions.
-- **Inline-first.** The document carries the code; the runtime is a thin dispatcher.
+- **Your Markdown, not a new format.** The runtime reads `@sections`; everything
+  else is untouched prose.
+- **Inline-first.** Code lives in the document; the runtime is a thin dispatcher.
 - **Detect, don't install.** Use what's on the machine; fail clearly when it's not.
 - **Stdlib only.** Zero dependencies, including `@http`.
-- **The two-test rule for every feature:** *Could an agent write this with no
-  examples? Does it give a human a reason to trust it with real work today?*
+- **Two-test rule for every feature:** *Could an agent write this with no examples?
+  Does it give a human a reason to trust it with real work today?*
 
 ---
 
 ## Status & roadmap
 
-**Current: v1.0.0** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the exact contract.
+**Current: v1.0.0** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the full contract.
 
 - ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `parse` / `validate`)
 - ✅ Plugins: shell, inline languages, http, filesystem, llm
@@ -392,10 +313,10 @@ runxmd --version
 - ✅ Reactive `runxmd watch`
 - ✅ Agent engine (`@goal` → auto-generate `@tasks` → execute → update memory)
 - ⏳ Declarative events (`@on_file_change`, `@daily`, `@on_commit`)
-- ⏳ Portable `@task` abstraction (run the same intent via any language)
-- ⏳ Multi-agent / distributed (XOS)
+- ⏳ Portable `@task` abstraction
+- ⏳ Multi-agent / distributed
 
-This is early software with a large vision. Contributions and ideas welcome.
+Contributions and ideas welcome.
 
 ---
 

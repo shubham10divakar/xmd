@@ -6,7 +6,7 @@
 > that both **humans and AI agents** can read, write, and run.
 
 [![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/runxmd)](https://pypi.org/project/runxmd/)
+[![Downloads](https://static.pepy.tech/badge/runxmd)](https://pepy.tech/project/runxmd)
 [![status](https://img.shields.io/badge/status-v1.0.0-blue)](./SPEC-v0.0.3.md)
 [![deps](https://img.shields.io/badge/dependencies-zero-brightgreen)](#)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)](#)

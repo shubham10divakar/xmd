@@ -16,8 +16,12 @@ def _load(path: str):
 
 
 def main(argv=None) -> int:
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    # Force UTF-8 so the ▶/✓/✗ glyphs render on Windows cp1252 consoles.
+    # Guarded with hasattr: notebook streams (Colab/Kaggle/Jupyter) replace
+    # sys.stdout with an object that has no reconfigure(), and that's fine.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     p = argparse.ArgumentParser(prog="runxmd", description="runxmd — the XMD runtime v" + __version__)
     p.add_argument("--version", action="version", version="runxmd " + __version__)
     sub = p.add_subparsers(dest="cmd")

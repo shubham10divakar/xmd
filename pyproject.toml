@@ -28,6 +28,9 @@ classifiers = [
 ]
 dependencies = []  # stdlib only — zero dependencies by design
 
+[project.optional-dependencies]
+test = ["pytest>=7"]  # dev-only; the runtime itself stays zero-dependency
+
 [project.urls]
 Homepage = "https://github.com/shubham10divakar/xmd"
 Repository = "https://github.com/shubham10divakar/xmd"
@@ -41,3 +44,6 @@ version = { attr = "runxmd.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["runxmd*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

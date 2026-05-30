@@ -12,6 +12,11 @@ env/
 # XMD scratch
 out/
 examples/_*.xmd
+examples/_*.md
+
+# Test artifacts
+.pytest_cache/
+.pytest_tmp/
 
 # OS / editor
 .DS_Store

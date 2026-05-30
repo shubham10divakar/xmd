@@ -160,6 +160,16 @@ cd xmd
 pip install -e .
 ```
 
+### Running the tests
+
+```bash
+pip install -e ".[test]"
+pytest
+```
+
+The suite includes a parametrized check that the **same content runs identically
+whether it's named `.md` or `.xmd`** — the extension-agnostic guarantee, pinned down.
+
 ---
 
 ## Quick start

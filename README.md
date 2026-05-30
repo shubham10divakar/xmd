@@ -3,6 +3,8 @@
 > **You already write `.md` files. Now you can run them.**
 > Add a `@workflow` section to any Markdown doc and `runxmd` executes it —
 > the same file your team reads is also the program, the config, and the memory.
+> Runs both plain `.md` files and `.xmd` files (same format; `.xmd` just signals
+> "this Markdown is meant to be run").
 
 [![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
 [![Downloads](https://static.pepy.tech/badge/runxmd)](https://pepy.tech/project/runxmd)
@@ -17,6 +19,44 @@
 `runxmd` is a runtime that makes Markdown files executable. You keep writing `.md`
 files exactly as you do today — they still render in GitHub, VS Code, and every
 Markdown viewer. You just also get to *run* them.
+
+---
+
+## `.md` and `.xmd` — same Markdown, one is a signal
+
+`runxmd` runs **both `.md` and `.xmd` files.** They use the **exact same Markdown
+grammar** — there is no second syntax to learn, and the runtime parses them
+identically. The only difference is the *name*, and the name is just a convention:
+
+- **`.md`** — a regular Markdown file. It might be plain prose, or it might have a
+  `@workflow` section or two. Either way, `runxmd` runs whatever executable
+  sections it finds.
+- **`.xmd`** — *also* plain Markdown, byte-for-byte the same format. The `.xmd`
+  extension is an **opt-in label** that says *"this file is the runnable kind — it
+  has the workflows, code, and memory."*
+
+Think of it like `script.js` vs `script.test.js`: both are 100% JavaScript, parsed
+by the same engine. The `.test.` part doesn't change the language — it just tells
+you (and your tools) the file's *role* at a glance. `.xmd` is exactly that:
+**"this is the executable kind of Markdown."**
+
+```bash
+runxmd run notes.md       # runs — finds the @workflow inside
+runxmd run pipeline.xmd   # runs — identical engine, identical grammar
+```
+
+Why bother with the `.xmd` label?
+
+- A person scanning a repo sees `README.md` vs `deploy.xmd` and instantly knows
+  *which one does something* — without opening it.
+- An agent can be told "run the `.xmd` files" without cracking open every `.md`
+  to check whether it contains workflows.
+- Editors and CI can give `.xmd` a "run" affordance while still rendering it as
+  ordinary Markdown everywhere.
+
+**Bottom line:** use `.md` if you just want your existing docs to run; use `.xmd`
+when you want to flag "this Markdown is meant to be executed." The runtime treats
+them the same — the choice is purely about intent and legibility.
 
 ---
 
@@ -78,7 +118,7 @@ set: memory.runtime.status = "deployed"
 ```
 
 ```bash
-runxmd run deploy.md
+runxmd run deploy.md      # or name it deploy.xmd — same result
 ```
 
 Now the steps run. `runtime.status` is written back into the file. Next time

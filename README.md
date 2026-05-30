@@ -8,7 +8,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
 [![Downloads](https://static.pepy.tech/badge/runxmd)](https://pepy.tech/project/runxmd)
-[![status](https://img.shields.io/badge/status-v1.0.0-blue)](./SPEC-v0.0.3.md)
+[![status](https://img.shields.io/badge/status-v1.0.1-blue)](./SPEC-v0.0.3.md)
 [![deps](https://img.shields.io/badge/dependencies-zero-brightgreen)](#)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)](#)
 
@@ -355,7 +355,7 @@ runtime at it, and it executes. The doc is the system. No translation layer.
 
 ## Status & roadmap
 
-**Current: v1.0.0** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the full contract.
+**Current: v1.0.1** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the full contract.
 
 - ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `parse` / `validate`)
 - ✅ Plugins: shell, inline languages, http, filesystem, llm

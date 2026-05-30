@@ -3,9 +3,9 @@ requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "xmd"
+name = "runxmd"
 dynamic = ["version"]
-description = "A runtime that turns Markdown-like documents into running systems."
+description = "runxmd — a runtime that turns Markdown-like .xmd documents into running systems."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
@@ -34,10 +34,10 @@ Repository = "https://github.com/shubham10divakar/xmd"
 Issues = "https://github.com/shubham10divakar/xmd/issues"
 
 [project.scripts]
-xmd = "xmd.cli:main"
+runxmd = "runxmd.cli:main"
 
 [tool.setuptools.dynamic]
-version = { attr = "xmd.__version__" }
+version = { attr = "runxmd.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["xmd*"]
+include = ["runxmd*"]

@@ -2,7 +2,7 @@
 
 > Supersedes `SPEC-v0.0.1.md`. v0.0.2 keeps the entire v0.0.1 contract and adds:
 > the `@http` and filesystem (`@write`/`@read`) plugins, and the reactive
-> `xmd watch` command (Phase-3 seed). The field-ownership rule (§4.1) introduced
+> `runxmd watch` command (Phase-3 seed). The field-ownership rule (§4.1) introduced
 > at the end of v0.0.1 is carried forward.
 > Status: **built & verified**.
 
@@ -119,11 +119,11 @@ clobbered by the runtime; `{{ memory.runtime.status }}` is the runtime's to mana
 ## 5. CLI
 
 ```bash
-xmd run <file> [--workflow NAME] [--no-write]            # execute; persist memory
-xmd watch <file> [--workflow NAME] [--interval S]        # (new) re-run on change
-                 [--max-runs N] [--no-write]
-xmd parse <file>                                         # parsed structure as JSON
-xmd validate <file>                                      # check it parses; list sections
+runxmd run <file> [--workflow NAME] [--no-write]            # execute; persist memory
+runxmd watch <file> [--workflow NAME] [--interval S]        # (new) re-run on change
+                    [--max-runs N] [--no-write]
+runxmd parse <file>                                         # parsed structure as JSON
+runxmd validate <file>                                      # check it parses; list sections
 ```
 
 **`watch`** re-runs the file whenever its mtime changes. Self-trigger guard: the
@@ -137,7 +137,7 @@ baseline. `--max-runs N` stops after N runs (0 = forever; useful for CI/tests).
 
 - Intermediate Representation (IR) — not needed until a 2nd runtime target.
 - **Declarative** event triggers (`@on_file_change`, `@daily`, `@on_commit`) —
-  `xmd watch` is the minimal polling seed; the declarative event system is later.
+  `runxmd watch` is the minimal polling seed; the declarative event system is later.
 - Agent engine (goal → task generation → self-coordination) — Phase 4.
 - `@task` declarative abstraction + resolver (true portability) — earned later.
 - Distributed runtime / XOS platform / multi-extension family — far future.
@@ -146,7 +146,7 @@ baseline. `--max-runs N` stops after N runs (0 = forever; useful for CI/tests).
 
 ## 7. Changelog
 
-- **v0.0.2** — `@http`, `@write`, `@read` plugins; `xmd watch` (polling, with
+- **v0.0.2** — `@http`, `@write`, `@read` plugins; `runxmd watch` (polling, with
   self-trigger guard + `--max-runs`). Carries forward field ownership (§4.1) and
   UTF-8 BOM tolerance.
 - **v0.0.1** — parser, IR-free executor, CLI (`run`/`parse`/`validate`),
@@ -156,11 +156,11 @@ baseline. `--max-runs N` stops after N runs (0 = forever; useful for CI/tests).
 
 ## 8. Acceptance tests (all passing)
 
-- `xmd run examples/PROJECT.xmd` runs the workflow, substitutes memory, applies
+- `runxmd run examples/PROJECT.xmd` runs the workflow, substitutes memory, applies
   `@on_done`, writes memory back — file stays human-readable.
 - A `set:` to an agent-owned key is refused; a `runtime.*` key is written.
 - `@write` → `@read` round-trips a file with `{{ }}` substitution; `@http` GET
   returns a status + body; a missing interpreter fails gracefully and the run
   continues.
-- `xmd watch --max-runs 2` runs once, re-runs on an external edit, and does **not**
+- `runxmd watch --max-runs 2` runs once, re-runs on an external edit, and does **not**
   self-trigger from its own write-back.

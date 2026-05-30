@@ -1,7 +1,7 @@
 # XMD Specification — v0.0.3
 
 > Supersedes `SPEC-v0.0.2.md`. v0.0.3 adds the **agent engine** (Layer 7):
-> `xmd agent` turns a `@goal` into `@tasks`, executes them, and updates memory —
+> `runxmd agent` turns a `@goal` into `@tasks`, executes them, and updates memory —
 > the document begins managing itself. Plus the `@llm` plugin that powers planning.
 > Everything from v0.0.2 (plugins, memory, `watch`, field ownership) carries forward.
 > Status: **built & verified** (LLM-backed planning requires `ANTHROPIC_API_KEY`).
@@ -24,7 +24,7 @@ As in [`SPEC-v0.0.2.md`](./SPEC-v0.0.2.md), with these additions:
   `prompt` (required), `model` (default `claude-sonnet-4-6`), `max_tokens`. Reads
   the key from `ANTHROPIC_API_KEY`; if unset, fails gracefully (the runtime never
   stores or bundles a key — same spirit as detect-don't-install).
-- **Field ownership (§4.1) still holds:** mechanical write-back (`xmd run`,
+- **Field ownership (§4.1) still holds:** mechanical write-back (`runxmd run`,
   `@on_done`) may only write `runtime.*` memory. See §5.1 for how the agent
   command differs.
 
@@ -36,7 +36,7 @@ Full plugin set: `@print`, `@shell`, `@python`/`@node`/`@ruby`/`@bash`, `@http`,
 ## 5. The agent engine (Layer 7)
 
 ```bash
-xmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
+runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
 ```
 
 The loop:
@@ -53,7 +53,7 @@ Update @memory (runtime.*) + write the document back
 
 ### 5.1 Agent-author mode (ownership)
 
-`xmd agent` is **agent-author** mode. Unlike `xmd run` (mechanical; `runtime.*`
+`runxmd agent` is **agent-author** mode. Unlike `runxmd run` (mechanical; `runtime.*`
 only), the agent command is authorized to **write `@tasks`** generated from the
 goal and to tick them as they complete. This is a deliberate, explicit boundary:
 authoring tasks is what makes the document self-organizing, and it only happens
@@ -95,12 +95,12 @@ file.
 ## 6. CLI (full)
 
 ```bash
-xmd run <file> [--workflow NAME] [--no-write]
-xmd watch <file> [--interval S] [--max-runs N] [--no-write]
-xmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
-xmd parse <file>
-xmd validate <file>
-xmd --version
+runxmd run <file> [--workflow NAME] [--no-write]
+runxmd watch <file> [--interval S] [--max-runs N] [--no-write]
+runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
+runxmd parse <file>
+runxmd validate <file>
+runxmd --version
 ```
 
 ---
@@ -108,7 +108,7 @@ xmd --version
 ## 7. Out of scope (still deferred)
 
 - Declarative event triggers (`@on_file_change`, `@daily`, `@on_commit`) —
-  `xmd watch` remains the polling seed.
+  `runxmd watch` remains the polling seed.
 - Intermediate Representation (IR), the `@task` portable-resolver abstraction,
   multi-agent / distributed (XOS).
 - Prompt caching / streaming in `@llm` (kept minimal for now).
@@ -117,9 +117,9 @@ xmd --version
 
 ## 8. Changelog
 
-- **v0.0.3** — agent engine (`xmd agent`: plan → execute → update, agent-author
+- **v0.0.3** — agent engine (`runxmd agent`: plan → execute → update, agent-author
   mode); `@llm` plugin; reusable `run_workflow` / `run_steps` executor helpers.
-- **v0.0.2** — `@http`, `@write`, `@read`; `xmd watch`; field ownership (§4.1).
+- **v0.0.2** — `@http`, `@write`, `@read`; `runxmd watch`; field ownership (§4.1).
 - **v0.0.1** — parser, executor, CLI, shell/inline-language plugins, three memory
   powers.
 
@@ -127,7 +127,7 @@ xmd --version
 
 ## 9. Acceptance tests (passing)
 
-- `xmd agent examples/AGENT.xmd` reads the goal, runs the three linked workflows,
+- `runxmd agent examples/AGENT.xmd` reads the goal, runs the three linked workflows,
   ticks all tasks, writes `runtime.*` progress, and leaves the file readable.
 - `--dry-run` previews without executing or writing.
 - With no `ANTHROPIC_API_KEY`: planning and `--autonomous` step-generation both

@@ -168,9 +168,9 @@ while `{{ memory.runtime.status }}` is the runtime's to manage.
 ## 5. CLI
 
 ```bash
-xmd run <file> [--workflow NAME] [--no-write]   # execute workflow(s); persist memory
-xmd parse <file>                                # print parsed structure as JSON
-xmd validate <file>                             # check it parses; report sections
+runxmd run <file> [--workflow NAME] [--no-write]   # execute workflow(s); persist memory
+runxmd parse <file>                                # print parsed structure as JSON
+runxmd validate <file>                             # check it parses; report sections
 ```
 
 `run` executes all `@workflow` sections (or just `--workflow NAME`), printing each
@@ -190,7 +190,7 @@ step's result, then applies `@on_done` and writes memory back unless `--no-write
 
 ## 7. The dogfood acceptance test
 
-> `xmd run PROJECT.xmd` runs `@workflow build_and_check`, substitutes
+> `runxmd run PROJECT.xmd` runs `@workflow build_and_check`, substitutes
 > `{{ memory.last_session }}`, executes the shell + python steps, applies the
 > `@on_done` hook, and writes the updated `@memory` back to the file — and the
 > file is still readable by a human afterward.

@@ -1,6 +1,6 @@
 """Agent engine (Layer 7) — goal -> tasks -> execute -> memory.
 
-`xmd agent` is **agent-author** mode: unlike `xmd run` (which may only write
+`runxmd agent` is **agent-author** mode: unlike `runxmd run` (which may only write
 `runtime.*` memory, per field ownership), the agent command is authorized to
 author `@tasks` generated from the `@goal`. The document grows itself.
 

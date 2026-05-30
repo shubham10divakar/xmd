@@ -363,9 +363,9 @@ Plugin System
 Commands:
 
 ```bash
-xmd parse file.wmd
-xmd run file.wmd
-xmd validate file.wmd
+runxmd parse file.wmd
+runxmd run file.wmd
+runxmd validate file.wmd
 ```
 
 ---
@@ -384,7 +384,7 @@ Event Engine
 Commands:
 
 ```bash
-xmd watch .
+runxmd watch .
 ```
 
 Documents become reactive.
@@ -407,7 +407,7 @@ Document Coordination
 Commands:
 
 ```bash
-xmd agent AGENT.lmd
+runxmd agent AGENT.lmd
 ```
 
 Documents become autonomous.

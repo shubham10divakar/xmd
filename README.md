@@ -39,8 +39,8 @@ set: memory.runtime.status = "ok"
 ```
 
 ```bash
-xmd run report.xmd      # runs the workflow, then updates @memory in the file
-xmd watch report.xmd    # re-runs automatically whenever you edit the file
+runxmd run report.xmd      # runs the workflow, then updates @memory in the file
+runxmd watch report.xmd    # re-runs automatically whenever you edit the file
 ```
 
 That's the whole idea: **one document is the program, its config, its state, and
@@ -96,10 +96,10 @@ cd xmd
 pip install -e .
 ```
 
-Now the `xmd` command is available. Or run without installing:
+Now the `runxmd` command is available. Or run without installing:
 
 ```bash
-python -m xmd.cli run examples/PROJECT.xmd
+python -m runxmd.cli run examples/PROJECT.xmd
 ```
 
 ---
@@ -133,7 +133,7 @@ set: memory.runtime.ran_at = "now"
 Run it:
 
 ```bash
-xmd run hello.xmd
+runxmd run hello.xmd
 ```
 
 ```text
@@ -225,12 +225,12 @@ runtime's to manage. Safe by design, not by luck.
 
 ---
 
-## Reacting to changes — `xmd watch`
+## Reacting to changes — `runxmd watch`
 
 ```bash
-xmd watch report.xmd                 # re-run on every save
-xmd watch report.xmd --interval 0.5  # poll faster
-xmd watch report.xmd --max-runs 3    # stop after 3 runs (great for CI)
+runxmd watch report.xmd                 # re-run on every save
+runxmd watch report.xmd --interval 0.5  # poll faster
+runxmd watch report.xmd --max-runs 3    # stop after 3 runs (great for CI)
 ```
 
 `watch` re-runs whenever the file changes. It will **not** loop on its own
@@ -240,7 +240,7 @@ write-back — only your edits trigger a re-run.
 
 ## Agents — let a goal drive itself
 
-`xmd agent` turns the document from *a program you run* into *a goal that pursues
+`runxmd agent` turns the document from *a program you run* into *a goal that pursues
 itself* (the vision's Layer 7):
 
 ```text
@@ -248,10 +248,10 @@ Read @goal → plan @tasks → execute each task → update @memory → write ba
 ```
 
 ```bash
-xmd agent project.xmd              # plan (if no tasks), then run linked workflows
-xmd agent project.xmd --replan     # regenerate tasks from the goal
-xmd agent project.xmd --autonomous # let the LLM generate AND run steps for unlinked tasks
-xmd agent project.xmd --dry-run    # show the plan without executing or writing
+runxmd agent project.xmd              # plan (if no tasks), then run linked workflows
+runxmd agent project.xmd --replan     # regenerate tasks from the goal
+runxmd agent project.xmd --autonomous # let the LLM generate AND run steps for unlinked tasks
+runxmd agent project.xmd --dry-run    # show the plan without executing or writing
 ```
 
 **Two ways a task gets done:**
@@ -262,20 +262,20 @@ xmd agent project.xmd --dry-run    # show the plan without executing or writing
    model-generated commands.
 
 Planning uses `@llm` (set `ANTHROPIC_API_KEY`). With no key, the agent skips
-planning and still runs any pre-existing workflow-linked tasks. `xmd agent` is the
+planning and still runs any pre-existing workflow-linked tasks. `runxmd agent` is the
 one command allowed to author `@tasks`; mechanical write-back stays restricted to
 `runtime.*` (see field ownership above). See [`examples/AGENT.xmd`](./examples/AGENT.xmd).
 
 ## Commands
 
 ```bash
-xmd run <file> [--workflow NAME] [--no-write]                 # execute; persist memory
-xmd watch <file> [--interval S] [--max-runs N]                # re-run on change
-xmd agent <file> [--replan] [--autonomous] [--dry-run]        # goal -> tasks -> run
+runxmd run <file> [--workflow NAME] [--no-write]                 # execute; persist memory
+runxmd watch <file> [--interval S] [--max-runs N]                # re-run on change
+runxmd agent <file> [--replan] [--autonomous] [--dry-run]        # goal -> tasks -> run
                  [--model M] [--max-tokens N]
-xmd parse <file>                                              # parsed structure as JSON
-xmd validate <file>                                           # check it parses; list sections
-xmd --version
+runxmd parse <file>                                              # parsed structure as JSON
+runxmd validate <file>                                           # check it parses; list sections
+runxmd --version
 ```
 
 ---
@@ -298,7 +298,7 @@ xmd --version
 - ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `parse` / `validate`)
 - ✅ Plugins: shell, inline languages, http, filesystem, llm
 - ✅ Memory: read / substitute / write-back, with field-ownership safety
-- ✅ Reactive `xmd watch`
+- ✅ Reactive `runxmd watch`
 - ✅ Agent engine (`@goal` → auto-generate `@tasks` → execute → update memory)
 - ⏳ Declarative events (`@on_file_change`, `@daily`, `@on_commit`)
 - ⏳ Portable `@task` abstraction (run the same intent via any language)

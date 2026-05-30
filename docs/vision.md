@@ -99,7 +99,7 @@ workflow:
 Execution:
 
 ```bash id="9q0v1s"
-xmd run workflow.wmd
+runxmd run workflow.wmd
 ```
 
 Advantages:
@@ -225,9 +225,9 @@ Create immediate value.
 Implementation:
 
 ```bash id="h1t5mu"
-pip install xmd
+pip install runxmd
 
-xmd run example.emd
+runxmd run example.emd
 ```
 
 Supported features:

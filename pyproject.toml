@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "runxmd"
 dynamic = ["version"]
-description = "runxmd — a runtime that turns Markdown-like .xmd documents into running systems."
+description = "runxmd — add state and execution to your .md files. .xmd is plain Markdown with a run-intent label."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"

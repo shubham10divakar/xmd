@@ -1,10 +1,10 @@
 # runxmd — run your Markdown files
 
-> **You already write `.md` files. Now you can run them.**
-> Add a `@workflow` section to any Markdown doc and `runxmd` executes it —
-> the same file your team reads is also the program, the config, and the memory.
-> Runs both plain `.md` files and `.xmd` files (same format; `.xmd` just signals
-> "this Markdown is meant to be run").
+> **You already write `.md` files. `runxmd` makes them stateful.**
+> Add `@memory`, `@tasks`, and `@workflow` sections to any Markdown doc and
+> `runxmd` executes it — state persists back into the same file your team reads.
+> Runs both `.md` and `.xmd` files identically; `.xmd` is plain Markdown too,
+> just a label that signals "this file is meant to be run."
 
 [![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
 [![Downloads](https://static.pepy.tech/badge/runxmd)](https://pepy.tech/project/runxmd)
@@ -16,9 +16,10 @@
 
 ## The idea in one sentence
 
-`runxmd` is a runtime that makes Markdown files executable. You keep writing `.md`
-files exactly as you do today — they still render in GitHub, VS Code, and every
-Markdown viewer. You just also get to *run* them.
+`runxmd` adds state and execution to `.md` files. You keep writing Markdown exactly
+as you do today — it still renders in GitHub, VS Code, and every viewer. The
+difference is that `@memory` persists across runs, `@tasks` track progress, and
+`@workflow` steps actually execute. Static doc → stateful doc. Same file.
 
 ---
 

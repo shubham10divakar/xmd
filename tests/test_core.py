@@ -90,3 +90,46 @@ def test_run_returns_document_and_runs_named_workflow_only(write_doc):
 
     assert "in second" in output
     assert "in first" not in output
+
+
+def test_implicit_workflow_from_top_level_steps(write_doc):
+    """Steps written at the top level without @workflow run as an implicit workflow."""
+    content = (
+        "# Bare Script\n\n"
+        "- @print\n"
+        '  text: "implicit step one"\n'
+        "- @print\n"
+        '  text: "implicit step two"\n'
+    )
+    path = write_doc("bare.md", content)
+    lines: list[str] = []
+    executor.run(str(path), write_back=False, out=lines.append)
+    output = "\n".join(lines)
+    assert "implicit step one" in output
+    assert "implicit step two" in output
+
+
+def test_implicit_workflow_coexists_with_named_workflow(write_doc):
+    """Top-level steps and a named @workflow both run."""
+    content = (
+        "# Mixed\n\n"
+        "- @print\n"
+        '  text: "top-level step"\n\n'
+        "@workflow named\n"
+        "- @print\n"
+        '  text: "in named workflow"\n'
+    )
+    path = write_doc("mixed.md", content)
+    lines: list[str] = []
+    executor.run(str(path), write_back=False, out=lines.append)
+    output = "\n".join(lines)
+    assert "top-level step" in output
+    assert "in named workflow" in output
+
+
+def test_plain_prose_without_steps_has_no_implicit_workflow(write_doc):
+    """Prose-only docs (no - @plugin lines) produce no implicit workflow."""
+    content = "# Notes\n\nJust some prose with no steps.\n"
+    path = write_doc("prose.md", content)
+    doc = parse(path.read_text(encoding="utf-8"))
+    assert doc.workflows() == []

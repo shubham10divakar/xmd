@@ -100,18 +100,21 @@ def parse(source: str) -> Document:
     lines = source.splitlines()
     doc = Document()
     n = len(lines)
+    orphan_body: list = []  # top-level lines outside any @section
 
-    # Title: first markdown heading before any section directive.
+    # Pre-section lines: title detection + collect orphan steps.
     i = 0
     while i < n and not lines[i].lstrip().startswith("@"):
         stripped = lines[i].strip()
         if stripped.startswith("#") and not doc.title:
             doc.title = stripped.lstrip("#").strip()
+        orphan_body.append(lines[i])
         i += 1
 
-    # Sections.
+    # Sections — non-@ lines between sections also go into orphan_body.
     while i < n:
         if not lines[i].lstrip().startswith("@"):
+            orphan_body.append(lines[i])
             i += 1
             continue
         header = lines[i].strip()[1:].strip()
@@ -124,6 +127,15 @@ def parse(source: str) -> Document:
             body.append(lines[i])
             i += 1
         doc.sections.append(_build_section(kind, name, body))
+
+    # Implicit workflow: any top-level - @plugin steps found outside @sections.
+    if orphan_body:
+        implicit_steps = _parse_steps(orphan_body)
+        if implicit_steps:
+            sec = Section(kind="workflow", name=None)
+            sec.steps = implicit_steps
+            doc.sections.append(sec)
+
     return doc
 
 
@@ -185,12 +197,28 @@ def _parse_steps(body: list) -> list:
             key, val = stripped.split(":", 1)
             key, val = key.strip(), val.strip()
             if val == "|":  # block scalar
+                # param_indent: the indentation of the "key: |" line itself.
+                # Content written by the serializer is always at param_indent+2,
+                # so any non-empty line at <= param_indent that looks like
+                # "word:" is the NEXT param, not block content — stop there.
+                param_indent = len(raw) - len(raw.lstrip())
+                _next_param = re.compile(r"^\w[\w\s]*:")
                 block: list = []
                 i += 1
                 while i < n:
                     bl = body[i]
-                    if _STEP_RE.match(bl.strip()):
+                    bl_stripped = bl.strip()
+                    if _STEP_RE.match(bl_stripped):
                         break
+                    if bl_stripped:
+                        bl_indent = len(bl) - len(bl.lstrip())
+                        if bl_indent <= param_indent and _next_param.match(bl_stripped):
+                            break
+                        # A non-empty line at column 0 inside a workflow body is
+                        # inter-step prose (comments, headings, freetext), never
+                        # block content — stop collecting here.
+                        if bl_indent == 0 and param_indent > 0:
+                            break
                     block.append(bl)
                     i += 1
                 cur.params[key] = _dedent_block(block)

@@ -27,7 +27,12 @@ def test_run_is_extension_agnostic(write_doc, ext):
 
 
 def test_md_and_xmd_produce_byte_identical_output(write_doc):
-    """The same content as a.md and b.xmd must yield the exact same run output."""
+    """The same content as a.md and b.xmd must yield the exact same run output.
+
+    The auto-results message includes the output filename, which differs by
+    extension (a_results.md vs b_results.xmd), so we strip those lines before
+    comparing — the guarantee is about workflow execution output, not file paths.
+    """
     md = write_doc("a.md")
     xmd = write_doc("b.xmd")
 
@@ -36,7 +41,8 @@ def test_md_and_xmd_produce_byte_identical_output(write_doc):
     executor.run(str(md), write_back=False, out=md_lines.append)
     executor.run(str(xmd), write_back=False, out=xmd_lines.append)
 
-    assert md_lines == xmd_lines
+    strip = lambda lines: [l for l in lines if "written" not in l]
+    assert strip(md_lines) == strip(xmd_lines)
 
 
 @pytest.mark.parametrize("ext", EXTENSIONS)

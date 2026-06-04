@@ -81,7 +81,7 @@ def agent_run(
             if dry_run:
                 out(f"  → would run workflow '{target}'")
                 continue
-            ok = executor.run_workflow(wf, memory, ctx, out)
+            ok, _ = executor.run_workflow(wf, memory, ctx, out)
         elif autonomous:
             out(f"\n● task (autonomous): {task.text}")
             if dry_run:
@@ -182,4 +182,5 @@ def _exec_via_llm(task_text, goal, memory, ctx, model, max_tokens, out):
         out("  · LLM returned no runnable steps")
         return False
     out(f"  · LLM generated {len(steps)} step(s)")
-    return executor.run_steps(steps, memory, ctx, out)
+    ok, _ = executor.run_steps(steps, memory, ctx, out)
+    return ok

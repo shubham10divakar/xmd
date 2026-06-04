@@ -26,17 +26,19 @@ def main(argv=None) -> int:
     p.add_argument("--version", action="version", version="runxmd " + __version__)
     sub = p.add_subparsers(dest="cmd")
 
-    pr = sub.add_parser("run", help="execute workflow(s) and persist memory")
+    pr = sub.add_parser("run", help="execute workflow(s) in the file")
     pr.add_argument("file")
     pr.add_argument("--workflow", help="run only the named workflow")
-    pr.add_argument("--no-write", action="store_true", help="do not write memory back")
+    pr.add_argument("--write-back", action="store_true",
+                    help="write runtime.* memory back into the source file (default: off)")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
     pw.add_argument("--workflow", help="run only the named workflow")
     pw.add_argument("--interval", type=float, default=1.0, help="poll seconds")
     pw.add_argument("--max-runs", type=int, default=0, help="stop after N runs (0=forever)")
-    pw.add_argument("--no-write", action="store_true", help="do not write memory back")
+    pw.add_argument("--write-back", action="store_true",
+                    help="write runtime.* memory back into the source file (default: off)")
 
     pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
     pa.add_argument("file")
@@ -47,6 +49,8 @@ def main(argv=None) -> int:
     pa.add_argument("--max-tokens", type=int, default=1024)
     pa.add_argument("--dry-run", action="store_true", help="plan/show without executing or writing")
 
+    sub.add_parser("check", help="show which language interpreters are installed")
+
     pp = sub.add_parser("parse", help="print parsed structure as JSON")
     pp.add_argument("file")
 
@@ -55,8 +59,11 @@ def main(argv=None) -> int:
 
     args = p.parse_args(argv)
 
-    if args.cmd == "run":
-        executor.run(args.file, workflow_name=args.workflow, write_back=not args.no_write)
+    if args.cmd == "check":
+        from . import checker
+        checker.check()
+    elif args.cmd == "run":
+        executor.run(args.file, workflow_name=args.workflow, write_back=args.write_back)
     elif args.cmd == "watch":
         flush = lambda *a: print(*a, flush=True)  # noqa: E731 — keep watch output live
         executor.watch(
@@ -64,7 +71,7 @@ def main(argv=None) -> int:
             workflow_name=args.workflow,
             interval=args.interval,
             max_runs=args.max_runs,
-            write_back=not args.no_write,
+            write_back=args.write_back,
             out=flush,
         )
     elif args.cmd == "agent":

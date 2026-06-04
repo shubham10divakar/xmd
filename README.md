@@ -102,6 +102,70 @@ LLM-readable output. Re-run any time to refresh it.
 
 ---
 
+## Worked examples in this repo
+
+Two complete, runnable showcases live in [`examples/showcase/`](./examples/showcase/).
+Each is a real `.md` you can run, paired with its committed render output so you can
+see exactly what runxmd produces — **the render file is the token-saving artifact: a
+model reads the precomputed results instead of trying to execute the code in its head.**
+
+### 1. Polyglot capability showcase
+
+[`examples/showcase/readme_showcase.md`](./examples/showcase/readme_showcase.md)
+→ [`readme_showcase_render.md`](./examples/showcase/readme_showcase_render.md)
+
+Runs Python, Node.js, Perl, and PowerShell — inline snippets *and* external
+scripts — at basic / medium / advanced levels, with tables, blockquotes, and
+headings woven between the steps to prove all Markdown survives untouched.
+
+```bash
+cd examples/showcase
+runxmd run readme_showcase.md
+```
+
+### 2. File-existence guardrails
+
+[`examples/showcase/file_checks_test.md`](./examples/showcase/file_checks_test.md)
+→ [`file_checks_test_render.md`](./examples/showcase/file_checks_test_render.md)
+
+The common "does this file/dir exist before I proceed?" guardrail at three levels:
+a single inline check, a multi-file inline check, and an advanced external script
+that audits a whole directory and prints a PASS/FAIL summary.
+
+**Before** (source — code the reader would have to mentally execute):
+
+```markdown
+## Level 1 — Simple: does a specific file exist?
+
+- @python
+  run: |
+    import pathlib
+    target = pathlib.Path("scripts/basic.py")
+    if target.exists():
+        print(f"  FOUND    : {target}")
+        print("  GUARDRAIL PASS: required file is present")
+    else:
+        print("  GUARDRAIL FAIL: required file is missing")
+```
+
+**After** (`file_checks_test_render.md` — the answer is already in the file):
+
+```markdown
+## Level 1 — Simple: does a specific file exist?
+
+=== Simple File Check ===
+  FOUND    : scripts\basic.py
+  Size     : 648 bytes
+  Is file  : True
+
+  GUARDRAIL PASS: required file is present
+```
+
+The prose, heading, and tables are identical between the two — only the
+`- @python` block is replaced with its real, computed output.
+
+---
+
 ## Output modes
 
 Every run produces an output file automatically. You control the format with
@@ -466,70 +530,6 @@ runxmd --version
 | `--write-back` | `run`, `watch` | Persist `runtime.*` memory back into the source file |
 | `--workflow NAME` | `run`, `watch` | Run only the named workflow |
 | `--write-back` omitted | default | Source file is never modified |
-
----
-
-## Worked examples in this repo
-
-Two complete, runnable showcases live in [`examples/showcase/`](./examples/showcase/).
-Each is a real `.md` you can run, paired with its committed render output so you can
-see exactly what runxmd produces — **the render file is the token-saving artifact: a
-model reads the precomputed results instead of trying to execute the code in its head.**
-
-### 1. Polyglot capability showcase
-
-[`examples/showcase/readme_showcase.md`](./examples/showcase/readme_showcase.md)
-→ [`readme_showcase_render.md`](./examples/showcase/readme_showcase_render.md)
-
-Runs Python, Node.js, Perl, and PowerShell — inline snippets *and* external
-scripts — at basic / medium / advanced levels, with tables, blockquotes, and
-headings woven between the steps to prove all Markdown survives untouched.
-
-```bash
-cd examples/showcase
-runxmd run readme_showcase.md
-```
-
-### 2. File-existence guardrails
-
-[`examples/showcase/file_checks_test.md`](./examples/showcase/file_checks_test.md)
-→ [`file_checks_test_render.md`](./examples/showcase/file_checks_test_render.md)
-
-The common "does this file/dir exist before I proceed?" guardrail at three levels:
-a single inline check, a multi-file inline check, and an advanced external script
-that audits a whole directory and prints a PASS/FAIL summary.
-
-**Before** (source — code the reader would have to mentally execute):
-
-```markdown
-## Level 1 — Simple: does a specific file exist?
-
-- @python
-  run: |
-    import pathlib
-    target = pathlib.Path("scripts/basic.py")
-    if target.exists():
-        print(f"  FOUND    : {target}")
-        print("  GUARDRAIL PASS: required file is present")
-    else:
-        print("  GUARDRAIL FAIL: required file is missing")
-```
-
-**After** (`file_checks_test_render.md` — the answer is already in the file):
-
-```markdown
-## Level 1 — Simple: does a specific file exist?
-
-=== Simple File Check ===
-  FOUND    : scripts\basic.py
-  Size     : 648 bytes
-  Is file  : True
-
-  GUARDRAIL PASS: required file is present
-```
-
-The prose, heading, and tables are identical between the two — only the
-`- @python` block is replaced with its real, computed output.
 
 ---
 

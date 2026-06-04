@@ -17,6 +17,7 @@ examples/_*.md
 # Test artifacts
 .pytest_cache/
 .pytest_tmp/
+tmp_test/
 
 # OS / editor
 .DS_Store

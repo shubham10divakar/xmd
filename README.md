@@ -20,6 +20,15 @@ as you do today — it still renders in GitHub, VS Code, and every viewer.
 The difference is that bare `- @plugin` steps execute directly, output renders back
 inline, and `@memory` persists state across runs. Static doc → stateful doc. Same file.
 
+> **The bigger goal — save tokens, stop making models recompute.**
+> When a document already carries the *results* of its code (the render output),
+> an LLM reading it doesn't have to mentally execute the snippets, guess at outputs,
+> or burn tokens reasoning through logic it can't actually run. The answer is already
+> in the file. **runxmd turns "here's code, imagine what it prints" into "here's code
+> and exactly what it printed" — so the model reads facts instead of computing them.**
+> Deterministic output, computed once by the real interpreter, reused by every reader
+> (human or model) forever after.
+
 ---
 
 ## The simplest possible file
@@ -164,6 +173,40 @@ stdlib with no platform-specific code.
 **PowerShell note:** On Windows, `@powershell` uses `powershell -ExecutionPolicy Bypass`.
 On Linux and macOS, it uses `pwsh` (PowerShell Core) — install from
 [https://aka.ms/install-powershell](https://aka.ms/install-powershell) if needed.
+
+---
+
+## Security & trust model
+
+`runxmd` executes code embedded in a Markdown file. **Treat a runnable `.md` exactly
+as you would treat a shell script: only run files you trust.**
+
+What this means in practice:
+
+- **`runxmd run file.md` executes the code inside it.** `@python`, `@node`, `@shell`,
+  the `*_script` plugins, etc. all run real commands on your machine with your
+  permissions. There is no sandbox.
+- **Only run `.md` files you wrote or have reviewed.** A document from an untrusted
+  source can contain `- @shell` / `- @python` steps that do anything you could do
+  from a terminal. This is the same trust decision as `bash somescript.sh`.
+- **The source file is never modified by default.** Output goes to a new
+  `_render.md` / `_results.md` / `_output.md` file. Memory write-back into the
+  source only happens with the explicit `--write-back` flag.
+- **`@llm` and `agent --autonomous` run model-generated commands.** With
+  `--autonomous`, the LLM both *writes* and *runs* the steps — that is arbitrary
+  code execution directed by a model. Use it only on goals and in environments
+  where that is acceptable.
+- **No network or filesystem access beyond what your steps request.** `runxmd`
+  itself makes no outbound calls (except `@http`/`@llm` when you use them) and
+  installs nothing — `detect-don't-install` means a missing interpreter fails
+  loudly rather than fetching anything.
+- **Inspect before running.** Use `runxmd parse file.md` to see the structured
+  steps, or `runxmd validate file.md` to list sections, before executing an
+  unfamiliar document.
+
+In short: the power of runxmd is that the document *is* the program. The
+responsibility that comes with it is the same as any executable — **run only what
+you trust.**
 
 ---
 
@@ -426,8 +469,76 @@ runxmd --version
 
 ---
 
+## Worked examples in this repo
+
+Two complete, runnable showcases live in [`examples/showcase/`](./examples/showcase/).
+Each is a real `.md` you can run, paired with its committed render output so you can
+see exactly what runxmd produces — **the render file is the token-saving artifact: a
+model reads the precomputed results instead of trying to execute the code in its head.**
+
+### 1. Polyglot capability showcase
+
+[`examples/showcase/readme_showcase.md`](./examples/showcase/readme_showcase.md)
+→ [`readme_showcase_render.md`](./examples/showcase/readme_showcase_render.md)
+
+Runs Python, Node.js, Perl, and PowerShell — inline snippets *and* external
+scripts — at basic / medium / advanced levels, with tables, blockquotes, and
+headings woven between the steps to prove all Markdown survives untouched.
+
+```bash
+cd examples/showcase
+runxmd run readme_showcase.md
+```
+
+### 2. File-existence guardrails
+
+[`examples/showcase/file_checks_test.md`](./examples/showcase/file_checks_test.md)
+→ [`file_checks_test_render.md`](./examples/showcase/file_checks_test_render.md)
+
+The common "does this file/dir exist before I proceed?" guardrail at three levels:
+a single inline check, a multi-file inline check, and an advanced external script
+that audits a whole directory and prints a PASS/FAIL summary.
+
+**Before** (source — code the reader would have to mentally execute):
+
+```markdown
+## Level 1 — Simple: does a specific file exist?
+
+- @python
+  run: |
+    import pathlib
+    target = pathlib.Path("scripts/basic.py")
+    if target.exists():
+        print(f"  FOUND    : {target}")
+        print("  GUARDRAIL PASS: required file is present")
+    else:
+        print("  GUARDRAIL FAIL: required file is missing")
+```
+
+**After** (`file_checks_test_render.md` — the answer is already in the file):
+
+```markdown
+## Level 1 — Simple: does a specific file exist?
+
+=== Simple File Check ===
+  FOUND    : scripts\basic.py
+  Size     : 648 bytes
+  Is file  : True
+
+  GUARDRAIL PASS: required file is present
+```
+
+The prose, heading, and tables are identical between the two — only the
+`- @python` block is replaced with its real, computed output.
+
+---
+
 ## Design principles
 
+- **Compute once, read forever.** The render output carries real results so models
+  and humans read facts instead of recomputing them — fewer tokens, no guessing.
+- **Run only what you trust.** The document is the program; treat a runnable `.md`
+  like a shell script.
 - **No annotation required to get started.** A file with bare `- @plugin` steps runs.
 - **Source files are read-only by default.** Output always goes to a new file.
 - **Render is the default output.** Prose is preserved; only code blocks are replaced.

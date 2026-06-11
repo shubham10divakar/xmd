@@ -31,6 +31,8 @@ def main(argv=None) -> int:
     pr.add_argument("--workflow", help="run only the named workflow")
     pr.add_argument("--write-back", action="store_true",
                     help="write runtime.* memory back into the source file (default: off)")
+    pr.add_argument("--no-save", action="store_true",
+                    help="do not append run records to @context_memory (default: append if section present)")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
@@ -39,6 +41,8 @@ def main(argv=None) -> int:
     pw.add_argument("--max-runs", type=int, default=0, help="stop after N runs (0=forever)")
     pw.add_argument("--write-back", action="store_true",
                     help="write runtime.* memory back into the source file (default: off)")
+    pw.add_argument("--no-save", action="store_true",
+                    help="do not append run records to @context_memory (default: append if section present)")
 
     pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
     pa.add_argument("file")
@@ -63,7 +67,8 @@ def main(argv=None) -> int:
         from . import checker
         checker.check()
     elif args.cmd == "run":
-        executor.run(args.file, workflow_name=args.workflow, write_back=args.write_back)
+        executor.run(args.file, workflow_name=args.workflow, write_back=args.write_back,
+                     save_context=not args.no_save)
     elif args.cmd == "watch":
         flush = lambda *a: print(*a, flush=True)  # noqa: E731 — keep watch output live
         executor.watch(
@@ -72,6 +77,7 @@ def main(argv=None) -> int:
             interval=args.interval,
             max_runs=args.max_runs,
             write_back=args.write_back,
+            save_context=not args.no_save,
             out=flush,
         )
     elif args.cmd == "agent":

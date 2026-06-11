@@ -6,11 +6,12 @@ how memory write-back works (SPEC §4).
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-KNOWN_KINDS = {"goal", "memory", "tasks", "workflow", "on_done"}
+KNOWN_KINDS = {"goal", "memory", "tasks", "workflow", "on_done", "context_memory"}
 
 _TASK_RE = re.compile(r"^- \[([ xX])\]\s*(.*)$")
 _STEP_RE = re.compile(r"^-\s*@(\w+)\s*$")
@@ -41,6 +42,8 @@ class Section:
     steps: list = field(default_factory=list)    # workflow
     hooks: list = field(default_factory=list)    # on_done
     raw: list = field(default_factory=list)      # unknown kinds
+    summary: str = ""                            # context_memory — rolling summary
+    entries: list = field(default_factory=list)  # context_memory — jsonl log
 
 
 @dataclass
@@ -151,9 +154,45 @@ def _build_section(kind: str, name: Optional[str], body: list) -> Section:
         sec.steps = _parse_steps(body)
     elif kind == "on_done":
         sec.hooks = [ln.strip() for ln in body if ln.strip()]
+    elif kind == "context_memory":
+        sec.summary, sec.entries = _parse_context_memory(body)
     else:
         sec.raw = [ln for ln in body]
     return sec
+
+
+def _parse_context_memory(body: list) -> tuple:
+    """Split a @context_memory body into (summary_prose, entries).
+
+    Layout: optional leading prose (the rolling summary) then a ```jsonl fenced
+    block of one JSON object per line (the raw log / source of truth). Malformed
+    log lines are tolerated and skipped (``validate`` can surface them later).
+    HTML-comment lines in the prose are dropped from the substituted summary.
+    """
+    summary_lines: list = []
+    entries: list = []
+    in_fence = False
+    seen_fence = False
+    for line in body:
+        s = line.strip()
+        if not in_fence and s.startswith("```"):
+            in_fence = True
+            seen_fence = True
+            continue
+        if in_fence:
+            if s.startswith("```"):
+                in_fence = False
+                continue
+            if not s:
+                continue
+            try:
+                entries.append(json.loads(s))
+            except ValueError:
+                continue
+            continue
+        if not seen_fence and not s.startswith("<!--"):
+            summary_lines.append(line)
+    return "\n".join(summary_lines).strip(), entries
 
 
 def _parse_kv(body: list) -> dict:
@@ -274,6 +313,12 @@ def _serialize_section(sec: Section) -> str:
                     lines.append(f"  {k}: {_format_scalar(v, quote_strings=False)}")
     elif sec.kind == "on_done":
         lines.extend(sec.hooks)
+    elif sec.kind == "context_memory":
+        if sec.summary:
+            lines.append(sec.summary)
+        lines.append("```jsonl")
+        lines.extend(json.dumps(e, ensure_ascii=False) for e in sec.entries)
+        lines.append("```")
     else:
         lines.extend(sec.raw)
     lines.append("")

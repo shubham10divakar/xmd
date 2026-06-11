@@ -29,7 +29,7 @@ cross-platform. SPEC at Layer 7.
 | Horizon | Version | Theme | What |
 |---|---|---|---|
 | **Now** | **v1.0.3** | **Trust & robustness** (freeze features) | Threat model + `run --dry-run` + `--allow` allowlist (P0); parser diagnostics, deeper `validate` (P1); minimal-diff write-back (P2); output-mode clarity (P3); scope discipline (P4). See [`TODO-v1.0.3.md`](TODO-v1.0.3.md). |
-| **Next** | **v1.1** | **Context memory** — *"make the document remember"* | `@context_memory` rolling summary + recursive refinement; `@human_memory`. Its byte-preserving append-writer also delivers P2. Full design: [`docs/context-memory-design.md`](docs/context-memory-design.md). |
+| **In progress** | **v1.1** | **Context memory** — *"make the document remember"* | `@context_memory`: ✅ Phase 1 raw capture + `{{ context }}` read-back, ✅ Phase 2 rolling summary (anti-drift) — **built & on `main`, 76 tests green**. ⬜ Phase 3 recursive refinement · ⬜ Phase 4 `@human_memory` · ⬜ Phase 5 evaluation. Its byte-preserving append-writer also seeds P2. Full design: [`docs/context-memory-design.md`](docs/context-memory-design.md). |
 | **Mid** | v1.2+ | **Reactive documents** — *"make it react"* | Declarative events (`@on_file_change`, `@daily`, `@on_commit`) replacing the `watch` polling seed. |
 | **Later** | v2.x | **Agentic depth & portability** — *"make it coordinate"* | Portable `@task` IR/resolver; multi-document agent coordination; prompt caching/streaming in `@llm`. |
 | **Vision** | — | **XOS — Document OS** | Multi-agent, shared memory (XMemory), distributed runtime (XCloud). Aspirational; gated by the two-test rule. |
@@ -37,8 +37,9 @@ cross-platform. SPEC at Layer 7.
 ## Platform pillars (from the vision)
 
 - **XRuntime** (execution engine) — real today: executor + plugins + agent engine.
-- **XMemory** (state layer) — today only flat `@memory`; **`@context_memory` is the
-  first real step toward XMemory.**
+- **XMemory** (state layer) — flat `@memory` plus **`@context_memory` (Phases 1–2
+  built): a self-curating working memory with an anti-drift rolling summary** —
+  the first real step toward XMemory.
 - **XOS** (platform) — aspirational; the reactive + coordinate layers are the path.
 
 ---

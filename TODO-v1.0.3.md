@@ -57,6 +57,9 @@ file on `--write-back`. Contradicts the "your Markdown, untouched" promise.
 
 - [ ] **Minimal-diff write-back** — only rewrite the `@memory` section's changed
       keys; leave the rest of the file byte-identical.
+      *Groundwork landed:* `executor._append_to_section` / `_set_section_summary`
+      (added for `@context_memory`) already do byte-preserving, targeted splices
+      that avoid `to_source` — reuse that pattern for `@memory` write-back.
 - [ ] Failing that, document clearly that `--write-back` reformats the doc.
 
 ---

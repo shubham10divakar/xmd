@@ -1,8 +1,13 @@
 # `@context_memory` — Markdown files as self-curating working memory for agents
 
-> Status: **design / planning** (not yet built). Target: runxmd v1.1 seed.
+> Status: **Phases 1–2 built & merged to `main`** (76 tests green). Phases 3–5
+> planned. Target: runxmd v1.1 seed.
 > This document is both the implementation plan and the justification record
 > (intended to support a future research write-up).
+>
+> **Progress:** ✅ Phase 1 (raw capture + plumbing) · ✅ Phase 2 (rolling summary,
+> anti-drift) · ⬜ Phase 3 (recursive refinement) · ⬜ Phase 4 (`@human_memory`)
+> · ⬜ Phase 5 (evaluation).
 
 ---
 

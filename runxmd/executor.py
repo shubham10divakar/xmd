@@ -20,9 +20,12 @@ Three output modes via @on_done:
 from __future__ import annotations
 
 import copy
+import datetime
+import json
 import os
 import re
 import time
+import uuid
 
 from . import plugins
 from .memory import substitute
@@ -35,23 +38,38 @@ _WRITE_RE = re.compile(r"^write(?:\(([^)]+)\))?$")
 _RESULTS_RE = re.compile(r"^results(?:\(([^)]+)\))?$")
 _RENDER_RE = re.compile(r"^render(?:\(([^)]+)\))?$")
 _STEP_LINE_RE = re.compile(r"^(\s*)-\s*@\w+\s*$")
+_CONTEXT_REF = re.compile(r"\{\{\s*context(?:_memory)?\s*\}\}")
 
-_SKIP_SECTION_KINDS = {"goal", "memory", "tasks", "on_done"}
+_SKIP_SECTION_KINDS = {"goal", "memory", "tasks", "on_done", "context_memory"}
+
+# Max characters kept per captured step output in a @context_memory log entry.
+CONTEXT_OUTPUT_CAP = 200
 
 
 def run(
     path: str,
     workflow_name: str = None,
     write_back: bool = False,
+    save_context: bool = True,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
         source = f.read()
     doc = parse(source)
+    run_id = uuid.uuid4().hex[:4]
 
     mem_sec = doc.section("memory")
     memory = dict(mem_sec.memory) if mem_sec else {}
     ctx = {"memory": memory, "source_path": os.path.abspath(path)}
+
+    ctx_sec = doc.section("context_memory")
+    if ctx_sec is not None:
+        # Expose the rolling summary + parsed log so steps/agents can read the
+        # accumulated context back. Only the summary is substituted into params.
+        ctx["context_memory"] = {
+            "summary": ctx_sec.summary,
+            "entries": list(ctx_sec.entries),
+        }
 
     workflows = doc.workflows()
     if workflow_name:
@@ -87,6 +105,20 @@ def run(
                 out,
             )
 
+    # Append the run's captured records to @context_memory (raw jsonl log).
+    # Opt-in by the section's presence; targeted splice keeps the rest of the
+    # file byte-identical (does NOT route through to_source).
+    if ctx_sec is not None and save_context and wf_results:
+        records = _build_context_records(run_id, wf_results)
+        if records:
+            jsonl = [
+                json.dumps({k: v for k, v in r.items() if v is not None},
+                           ensure_ascii=False)
+                for r in records
+            ]
+            _append_to_section(path, "context_memory", jsonl, fenced="jsonl")
+            out(f"\n· context saved → @context_memory ({len(records)} entries)")
+
     if write_back and mem_sec is not None:
         mem_sec.memory = memory
         with open(path, "w", encoding="utf-8") as f:
@@ -102,6 +134,7 @@ def watch(
     interval: float = 1.0,
     max_runs: int = 0,
     write_back: bool = False,
+    save_context: bool = True,
     out=print,
 ) -> None:
     """Re-run the document whenever it changes on disk."""
@@ -118,7 +151,8 @@ def watch(
             if mtime != last:
                 if last is not None:
                     out("\n↻ change detected")
-                run(path, workflow_name=workflow_name, write_back=write_back, out=out)
+                run(path, workflow_name=workflow_name, write_back=write_back,
+                    save_context=save_context, out=out)
                 runs += 1
                 try:
                     last = os.path.getmtime(path)
@@ -142,29 +176,41 @@ def run_steps(steps, memory, ctx, out) -> tuple:
     """Run a list of steps top-to-bottom; returns (all_ok, records)."""
     records = []
     for idx, step in enumerate(steps, 1):
-        ok, output, error = _run_step(idx, step, memory, ctx, out)
+        ok, output, error, dur = _run_step(idx, step, memory, ctx, out)
         records.append({"idx": idx, "plugin": step.plugin,
-                        "output": output, "error": error, "ok": ok})
+                        "output": output, "error": error, "ok": ok,
+                        "duration_ms": dur})
     return all(r["ok"] for r in records), records
 
 
 def _run_step(idx, step, memory, ctx, out) -> tuple:
-    """Run one step; returns (ok, output, error)."""
+    """Run one step; returns (ok, output, error, duration_ms)."""
     plugin = plugins.get(step.plugin)
     label = f"  step {idx} @{step.plugin}"
     if plugin is None:
         out(f"{label} ✗ unknown plugin")
-        return False, "", f"unknown plugin: @{step.plugin}"
-    params = {k: substitute(v, memory) for k, v in step.params.items()
-              if k != "result"}
+        return False, "", f"unknown plugin: @{step.plugin}", 0
+    ctx_summary = (ctx.get("context_memory") or {}).get("summary", "")
+    params = {k: _subst_context(substitute(v, memory), ctx_summary)
+              for k, v in step.params.items() if k != "result"}
+    t0 = time.perf_counter()
     result = plugin(params, ctx)
+    dur = int((time.perf_counter() - t0) * 1000)
     if result.ok:
         out(f"{label} ✓")
         _emit(result.output, out)
     else:
         out(f"{label} ✗ (exit {result.code})")
         _emit(result.error or result.output, out)
-    return result.ok, result.output or "", result.error or ""
+    return result.ok, result.output or "", result.error or "", dur
+
+
+def _subst_context(value, summary: str):
+    """Replace ``{{ context }}`` / ``{{ context_memory }}`` with the rolling
+    summary. Non-strings pass through; absent summary resolves to empty string."""
+    if not isinstance(value, str):
+        return value
+    return _CONTEXT_REF.sub(summary, value)
 
 
 def _emit(text, out) -> None:
@@ -395,3 +441,114 @@ def _apply_hooks(hooks, memory, out,
         memory[key] = parse_scalar(raw)
 
     return output_written
+
+
+# ---------------------------------------------------------------------------
+# @context_memory — raw capture (SPEC: context-memory-design §4)
+# ---------------------------------------------------------------------------
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _build_context_records(run_id: str, wf_results: dict,
+                           cap: int = CONTEXT_OUTPUT_CAP) -> list:
+    """Turn a run's per-step records into @context_memory log entries.
+
+    One entry per step. Output is whitespace-collapsed to a single line and
+    truncated to `cap` chars — the raw log is an index, not an archive (full
+    multi-line output lives in the render/output files).
+    """
+    now = _now_iso()
+    records = []
+    for wf_name, recs in wf_results.items():
+        for r in recs:
+            text = (r["output"] if r["ok"] else r["error"]) or ""
+            text = " ".join(text.split())
+            if len(text) > cap:
+                text = text[:cap - 1] + "…"
+            records.append({
+                "time": now,
+                "run": run_id,
+                "workflow": wf_name or None,
+                "step": r["idx"],
+                "plugin": r["plugin"],
+                "status": "ok" if r["ok"] else "err",
+                "duration_ms": r.get("duration_ms"),
+                "output": text,
+            })
+    return records
+
+
+def _append_to_section(path: str, kind: str, new_lines: list,
+                       *, fenced: str = None) -> None:
+    """Append lines into the ``@<kind>`` section of a file, byte-preserving.
+
+    A targeted text splice: everything outside the insertion point is left
+    exactly as-is (this deliberately does NOT use ``to_source``, which would
+    reformat the whole document). If ``fenced`` is given, lines are inserted
+    inside that section's first fenced block (created if absent). The section
+    itself is created at EOF if it does not exist. Generic so @human_memory can
+    reuse it later.
+    """
+    with open(path, encoding="utf-8") as f:
+        src = f.read()
+    lines = src.split("\n")
+    header = "@" + kind
+
+    h = None
+    for idx, ln in enumerate(lines):
+        st = ln.strip()
+        if st == header or st.startswith(header + " "):
+            h = idx
+            break
+
+    if h is None:  # section absent → create it at EOF
+        tail = []
+        if lines and any(s.strip() for s in lines):
+            tail.append("")
+        tail.append(header)
+        tail.append("")
+        if fenced is not None:
+            tail += ["```" + fenced, *new_lines, "```"]
+        else:
+            tail += list(new_lines)
+        lines += tail
+        _write_lines(path, lines)
+        return
+
+    # section body spans (h, end) up to the next "@section" or EOF
+    end = len(lines)
+    for idx in range(h + 1, len(lines)):
+        if lines[idx].lstrip().startswith("@"):
+            end = idx
+            break
+
+    if fenced is not None:
+        open_i = close_i = None
+        for idx in range(h + 1, end):
+            if lines[idx].strip().startswith("```"):
+                if open_i is None:
+                    open_i = idx
+                else:
+                    close_i = idx
+                    break
+        if open_i is not None and close_i is not None:
+            lines[close_i:close_i] = list(new_lines)
+        else:  # no fence yet → create one at the end of the section body
+            at = end
+            while at - 1 > h and not lines[at - 1].strip():
+                at -= 1
+            lines[at:at] = ["```" + fenced, *new_lines, "```"]
+    else:
+        at = end
+        while at - 1 > h and not lines[at - 1].strip():
+            at -= 1
+        lines[at:at] = list(new_lines)
+
+    _write_lines(path, lines)
+
+
+def _write_lines(path: str, lines: list) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))

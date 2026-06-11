@@ -39,6 +39,7 @@ _RESULTS_RE = re.compile(r"^results(?:\(([^)]+)\))?$")
 _RENDER_RE = re.compile(r"^render(?:\(([^)]+)\))?$")
 _STEP_LINE_RE = re.compile(r"^(\s*)-\s*@\w+\s*$")
 _CONTEXT_REF = re.compile(r"\{\{\s*context(?:_memory)?\s*\}\}")
+_SUMMARIZE_RE = re.compile(r"^summarize(?:\(([^)]+)\))?$")
 
 _SKIP_SECTION_KINDS = {"goal", "memory", "tasks", "on_done", "context_memory"}
 
@@ -118,6 +119,17 @@ def run(
             ]
             _append_to_section(path, "context_memory", jsonl, fenced="jsonl")
             out(f"\n· context saved → @context_memory ({len(records)} entries)")
+
+            # @on_done: summarize — regenerate the rolling summary FROM the raw
+            # log (never from the prior summary → no compounding drift). Only the
+            # summary is later injected via {{ context }}.
+            want, smodel = _summary_request(hooks_sec)
+            if want:
+                all_entries = list(ctx_sec.entries) + records
+                new_summary = _summarize_context(all_entries, smodel, out)
+                if new_summary:
+                    _set_section_summary(path, "context_memory", new_summary)
+                    out("· context summarized → @context_memory")
 
     if write_back and mem_sec is not None:
         mem_sec.memory = memory
@@ -552,3 +564,96 @@ def _append_to_section(path: str, kind: str, new_lines: list,
 def _write_lines(path: str, lines: list) -> None:
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
+# @context_memory — rolling summary (Phase 2, context-memory-design §4.1)
+# ---------------------------------------------------------------------------
+
+def _summary_request(hooks_sec) -> tuple:
+    """Scan @on_done for a ``summarize`` / ``summarize(model)`` directive.
+
+    Returns (wanted, model_or_None).
+    """
+    if hooks_sec is None:
+        return False, None
+    for h in hooks_sec.hooks:
+        m = _SUMMARIZE_RE.match(h.strip())
+        if m:
+            return True, ((m.group(1) or "").strip() or None)
+    return False, None
+
+
+def _llm_complete(prompt: str, model: str = None, max_tokens: int = 512) -> tuple:
+    """Call the @llm plugin; returns (ok, text_or_error).
+
+    Thin indirection so tests can monkeypatch summarization without a live API
+    key, and so any future model backend swaps in one place.
+    """
+    llm = plugins.get("llm")
+    if llm is None:
+        return False, "@llm plugin unavailable"
+    res = llm({"prompt": prompt, "model": model, "max_tokens": max_tokens}, {})
+    return (res.ok, res.output if res.ok else res.error)
+
+
+def _summarize_context(entries: list, model: str, out, max_tokens: int = 512):
+    """Regenerate the rolling summary from the raw log (the anti-drift rule).
+
+    The prompt contains the JSON-lines log only — never the previous summary —
+    so the summary always reconstructs faithfully from ground truth. Returns the
+    new summary text, or None if the model is unavailable (summary left as-is).
+    """
+    if not entries:
+        return None
+    log = "\n".join(json.dumps(e, ensure_ascii=False) for e in entries)
+    prompt = (
+        "You maintain a rolling WORKING-MEMORY summary for an automated agent.\n"
+        "Below is the full run log (oldest first), one JSON object per line. "
+        "Write a concise summary of the CURRENT state — what has been done, key "
+        "outcomes, and anything still outstanding. Summarize ONLY from the log; "
+        "do not invent. Output the summary text only, no preamble.\n\n"
+        "LOG:\n" + log
+    )
+    ok, text = _llm_complete(prompt, model, max_tokens)
+    if not ok:
+        out(f"  ⚠ summarize skipped: {text}")
+        return None
+    return text.strip() or None
+
+
+def _set_section_summary(path: str, kind: str, summary: str) -> None:
+    """Replace the prose summary of ``@<kind>`` (the lines before its fence),
+    byte-preserving everything else. HTML-comment lines in the region are kept.
+    """
+    with open(path, encoding="utf-8") as f:
+        src = f.read()
+    lines = src.split("\n")
+    header = "@" + kind
+
+    h = None
+    for idx, ln in enumerate(lines):
+        st = ln.strip()
+        if st == header or st.startswith(header + " "):
+            h = idx
+            break
+    if h is None:
+        return
+
+    end = len(lines)
+    for idx in range(h + 1, len(lines)):
+        if lines[idx].lstrip().startswith("@"):
+            end = idx
+            break
+
+    fence = None
+    for idx in range(h + 1, end):
+        if lines[idx].strip().startswith("```"):
+            fence = idx
+            break
+    region_end = fence if fence is not None else end
+
+    comments = [ln for ln in lines[h + 1:region_end] if ln.strip().startswith("<!--")]
+    new_region = ["", *comments, *summary.strip().split("\n"), ""]
+    lines[h + 1:region_end] = new_region
+    _write_lines(path, lines)

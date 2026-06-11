@@ -178,13 +178,17 @@ Outstanding: confirm prod health check.
    byte-identical outside the section; opt-in by presence; `.md` == `.xmd`;
    `{{ context }}` feeds a downstream step; agent-owned `@memory` untouched.
 
-### Phase 2 — Rolling summary (the payoff; needs a model, free tier fine)
-7. **Summarizer step/hook** — an `@llm` pass that reads the **raw log** and
-   regenerates the `summary` prose (per §4 anti-drift rule). Throttle/opt-in.
-8. **Inject only the summary** via `{{ context }}`.
-9. **Acceptance demo — "remembers across runs":** a doc whose `@llm` step
-   visibly builds on prior runs because the summary was injected; with the
-   section removed, it starts fresh each time. This is the proof the loop closes.
+### Phase 2 — Rolling summary (the payoff; needs a model, free tier fine) ✅ BUILT
+> Implemented & tested (`tests/test_context_memory_summary.py`, 14 tests; full
+> suite 76 green). `@on_done: summarize` / `summarize(model)` regenerates the
+> prose summary **from the raw log** (anti-drift); `_set_section_summary`
+> byte-preserving rewrite; `_llm_complete` test seam (no API key needed in
+> tests); graceful degradation when no model/key; example wired with `summarize`.
+7. ~~**Summarizer hook**~~ — `@on_done: summarize` reads the **raw log** and
+   regenerates the `summary` prose (per §4.1 anti-drift rule). Opt-in.
+8. ~~**Inject only the summary**~~ via `{{ context }}` (Phase 1).
+9. ~~**Acceptance demo — "remembers across runs"**~~ — `test_remembers_across_runs`
+   proves run 2 sees run 1's summary; without the section it starts fresh.
 
 ### Phase 3 — Recursive refinement engine (§4.4 made real)
 10. **Strategy interface** — a `refine(log, prev_summary, opts) -> summary`

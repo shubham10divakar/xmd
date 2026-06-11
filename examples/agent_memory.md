@@ -10,8 +10,8 @@ working memory. `{{ context }}` injects the rolling summary back into a step.
 
 @context_memory
 
-<!-- rolling summary: in Phase 2 an @llm step regenerates this from the log below -->
-No summary yet — run again after Phase 2 wires up the summarizer.
+<!-- rolling summary: regenerated from the log below by @on_done: summarize -->
+No summary yet — run once (with ANTHROPIC_API_KEY set) to populate this.
 
 ```jsonl
 ```
@@ -21,3 +21,6 @@ No summary yet — run again after Phase 2 wires up the summarizer.
   text: "checked the project; prior context = {{ context }}"
 - @print
   text: "done"
+
+@on_done
+summarize

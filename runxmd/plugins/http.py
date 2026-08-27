@@ -16,7 +16,7 @@ from .base import Result, register
 _MAX = 2000
 
 
-@register("http")
+@register("http", deterministic=False)
 def run_http(params: dict, ctx: dict) -> Result:
     url = str(params.get("url", "")).strip()
     if not url:

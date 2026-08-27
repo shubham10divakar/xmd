@@ -20,11 +20,6 @@ import re
 
 from . import __version__
 
-# Plugins whose output differs per run — a render containing them is a *sample*,
-# not a computed fact. Recorded in the header; A6 wires this to a plugin
-# attribute and adds inline markers + a `--pure` refusal.
-NON_DETERMINISTIC = {"http", "llm"}
-
 _HEADER_START = "<!-- runxmd-provenance"
 _HEADER_END = "-->"
 _HEADER_RE = re.compile(

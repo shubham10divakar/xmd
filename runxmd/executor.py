@@ -49,6 +49,7 @@ class RunReport:
     failed_steps: list = _field(default_factory=list)   # (workflow, idx, plugin)
     check_failed: bool = None                           # None → --check not run
     check_target: str = ""
+    pure_refused: list = _field(default_factory=list)   # plugin names refused by --pure
 
 _SET_RE = re.compile(r"^set:\s*memory\.([a-zA-Z0-9_.]+)\s*=\s*(.+)$")
 _WRITE_RE = re.compile(r"^write(?:\(([^)]+)\))?$")
@@ -72,6 +73,7 @@ def run(
     add_provenance: bool = True,
     check: bool = False,
     normalize: bool = True,
+    pure: bool = False,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
@@ -84,7 +86,7 @@ def run(
     mem_sec = doc.section("memory")
     memory = dict(mem_sec.memory) if mem_sec else {}
     ctx = {"memory": memory, "source_path": os.path.abspath(path),
-           "normalize": normalize}
+           "normalize": normalize, "pure": pure}
 
     ctx_sec = doc.section("context_memory")
     if ctx_sec is not None:
@@ -111,6 +113,10 @@ def run(
                 (wf.name or "", r["idx"], r["plugin"])
                 for r in records if not r["ok"]
             ]
+        report.pure_refused += [
+            r["plugin"] for r in records
+            if r.get("code") == 2 and r["error"].startswith("refused:")
+        ]
 
     header = _provenance_header(source, path, wf_results) if add_provenance else ""
 
@@ -188,6 +194,7 @@ def watch(
     save_context: bool = True,
     add_provenance: bool = True,
     normalize: bool = True,
+    pure: bool = False,
     out=print,
 ) -> None:
     """Re-run the document whenever it changes on disk."""
@@ -206,7 +213,7 @@ def watch(
                     out("\n↻ change detected")
                 run(path, workflow_name=workflow_name, write_back=write_back,
                     save_context=save_context, add_provenance=add_provenance,
-                    normalize=normalize, out=out)
+                    normalize=normalize, pure=pure, out=out)
                 runs += 1
                 try:
                     last = os.path.getmtime(path)
@@ -244,6 +251,11 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
     if plugin is None:
         out(f"{label} ✗ unknown plugin")
         return False, "", f"unknown plugin: @{step.plugin}", 0, 127
+    if ctx.get("pure") and not plugins.is_deterministic(step.plugin):
+        out(f"{label} ✗ refused (--pure): @{step.plugin} is non-deterministic")
+        return (False, "",
+                f"refused: @{step.plugin} is non-deterministic and --pure is set",
+                0, 2)
     ctx_summary = (ctx.get("context_memory") or {}).get("summary", "")
     params = {k: _subst_context(substitute(v, memory), ctx_summary)
               for k, v in step.params.items() if k not in ("result", "redact")}
@@ -295,7 +307,7 @@ def _provenance_header(source: str, source_path: str, wf_results: dict) -> str:
         for r in recs:
             gi += 1
             names.add(r["plugin"])
-            if r["plugin"] in provenance.NON_DETERMINISTIC:
+            if not plugins.is_deterministic(r["plugin"]):
                 nd.append(gi)
     return provenance.build(
         source,
@@ -379,6 +391,11 @@ def _render_source(source: str, wf_results: dict) -> str:
                 r = all_results[step_idx]
                 text = (r["output"] if r["ok"] else r["error"]).strip()
                 if text:
+                    if not plugins.is_deterministic(r["plugin"]):
+                        out_lines.append(
+                            f"<!-- non-deterministic: @{r['plugin']} — "
+                            f"this output is a sample, not a computed fact -->"
+                        )
                     out_lines.append(text)
                     out_lines.append("")
             step_idx += 1

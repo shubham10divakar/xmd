@@ -23,7 +23,7 @@ API_VERSION = "2023-06-01"
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
-@register("llm")
+@register("llm", deterministic=False)
 def run_llm(params: dict, ctx: dict) -> Result:
     prompt = params.get("prompt", params.get("text", params.get("run", "")))
     if not str(prompt).strip():

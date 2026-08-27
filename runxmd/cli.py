@@ -43,6 +43,9 @@ def main(argv=None) -> int:
     pr.add_argument("--raw", action="store_true",
                     help="do not normalize step output (keep absolute paths, "
                          "backslashes, home dir, hostname as-is)")
+    pr.add_argument("--pure", action="store_true",
+                    help="refuse to run non-deterministic steps (@http, @llm); "
+                         "the render is then a computed fact, not a sample")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
@@ -57,6 +60,8 @@ def main(argv=None) -> int:
                     help="omit the runxmd-provenance header from output files")
     pw.add_argument("--raw", action="store_true",
                     help="do not normalize step output")
+    pw.add_argument("--pure", action="store_true",
+                    help="refuse to run non-deterministic steps (@http, @llm)")
 
     pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
     pa.add_argument("file")
@@ -90,11 +95,16 @@ def main(argv=None) -> int:
                            write_back=args.write_back,
                            save_context=not args.no_save,
                            add_provenance=not args.no_provenance,
-                           check=args.check, normalize=not args.raw)
+                           check=args.check, normalize=not args.raw,
+                           pure=args.pure)
         report = getattr(doc, "report", None)
         if report is not None:
             if report.check_failed:
                 return 1
+            if report.pure_refused:
+                print(f"\n✗ pure: refused {len(report.pure_refused)} non-deterministic "
+                      f"step(s): {', '.join('@' + p for p in report.pure_refused)}")
+                return 2
             if args.strict and not report.all_ok:
                 n = len(report.failed_steps)
                 print(f"\n✗ strict: {n} step(s) failed")
@@ -110,6 +120,7 @@ def main(argv=None) -> int:
             save_context=not args.no_save,
             add_provenance=not args.no_provenance,
             normalize=not args.raw,
+            pure=args.pure,
             out=flush,
         )
     elif args.cmd == "agent":

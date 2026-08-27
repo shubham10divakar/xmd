@@ -9,6 +9,12 @@ implementation difficulty.
 
 Last updated: 2026-08-27
 
+**Progress:** Tier A ✅ complete (A1 A2 A4 A6) on branch `jot-tier-a`, 117 tests
+green. Tier B + Tier C not started. Remaining open sub-items are the non-blocking
+follow-ups noted under each finished section (pre-commit/Action wiring,
+`readme_showcase` regen on a full-interpreter box, `agent --autonomous`
+tagging).
+
 ---
 
 ## Verification summary
@@ -130,17 +136,25 @@ not diffable across machines, which kills the `write` projection's purpose.
 - [ ] Strip wall-clock durations — deferred; too broad a rule to apply safely
       without a real use case in hand.
 
-### ⬜ A6. Separate deterministic core from non-deterministic surface
+### ✅ A6. Separate deterministic core from non-deterministic surface
 
 `@http`, `@llm`, `agent --autonomous` produce a *sample*, not a computed fact —
 quietly contradicts "compute once, read forever."
 
-- [ ] `deterministic = False` attribute on `@http`, `@llm` handlers.
-- [ ] Render: emit `<!-- non-deterministic: @http -->` above such output.
-- [ ] Provenance: `non_deterministic_steps: [2, 5]`.
-- [ ] `run --pure`: refuse to execute non-deterministic plugins (exit 2).
-- [ ] Tests: `--pure` refusal; render tag presence.
-- [ ] Paper: state Properties 1–2 over the pure subset precisely.
+- [x] `register(name, deterministic=False)` on `@http` and `@llm`;
+      `plugins.is_deterministic(name)` reads it (default True).
+- [x] Render emits `<!-- non-deterministic: @llm — this output is a sample,
+      not a computed fact -->` above such a step's output.
+- [x] Provenance `non_deterministic_steps: [2]` now derived from the plugin
+      attribute (dropped the hardcoded set in `provenance.py`).
+- [x] `run --pure`: refuses non-deterministic steps before dispatch, records
+      them in `RunReport.pure_refused`, CLI exits **2** with a summary line.
+- [x] `tests/test_determinism.py` — 8 tests (attribute, render marker,
+      provenance indices, `--pure` exit 2, deterministic steps unaffected).
+      Full suite 117 green.
+- [ ] `agent --autonomous` non-determinism (LLM-generated steps) — not tagged
+      yet; separate code path in `agent.py`. Note for a follow-up.
+- [ ] Paper: state Properties 1–2 over the `--pure` subset precisely.
 
 ---
 

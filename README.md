@@ -31,6 +31,34 @@ inline, and `@memory` persists state across runs. Static doc → stateful doc. S
 
 ---
 
+## What's new in v1.0.3 — the trust layer
+
+"The answer is already in the file" only helps if you can tell the answer is
+*still* the answer. v1.0.3 makes that checkable, and makes a render safe to
+diff and safe to gate CI on.
+
+| Feature | What it does |
+|---|---|
+| **Provenance headers** | Every render / results / output file starts with an invisible `<!-- runxmd-provenance -->` comment: SHA-256 of the source, runxmd version, UTC time, platform, interpreter versions, and which steps were non-deterministic. |
+| **`runxmd verify <render>`** | Re-hashes the source. Exit **0** = current, **3** = STALE (source changed since the render), **2** = no header. Accepts multiple files. |
+| **`run --strict`** | Any failed step → non-zero exit. `runxmd run` is now a CI gate. |
+| **`run --check`** | Rebuild the render in memory, diff against the committed one, exit 1 on drift. A doctest for the whole document. Writes nothing. |
+| **Output normalization** (default on, `--raw` off) | Paths under the doc dir → relative, `$HOME` → `~`, hostname → `HOST`, `\` → `/`. Renders diff cleanly across machines. Plus a per-step `redact:` param. |
+| **`run --pure`** | Refuse non-deterministic steps (`@http`, `@llm`); exit 2 if any are present. The render is then a computed fact, not a sample. Such steps are also tagged inline and in provenance. |
+| **`session:` step param** | Opt in to shared scope — a variable from one step visible in the next. Default stays isolated. |
+| **`run --cache`** | Opt-in content-addressed cache: skip a language step whose plugin, params, interpreter version and script bytes are unchanged (`--force` to bust). |
+| **`timeout:` / `stdin:` / `if:` step params** | Kill a runaway step (exit 124); feed stdin; guard a step on `memory.*` / `context`. |
+| **`run --json`** | One JSON execution trace: every step's stdout, stderr, exit code, duration. |
+| **`write` projection** | Now records `status:` / `exit_code:` / `stderr:` per step — a re-run diff catches a step that started failing without printing anything. |
+| **[`GRAMMAR.md`](./GRAMMAR.md)** | The step grammar is **not** YAML. Every divergence is now documented, and `runxmd validate` rejects (rather than silently misparses) tabs, folded scalars, flow collections, anchors, unknown plugins, and bad `@on_done` hooks. |
+| **CI artifacts** | A composite [GitHub Action](./action.yml) (`uses: shubham10divakar/xmd@v1.0.3`), a [CI workflow](./.github/workflows/ci.yml), and [pre-commit hooks](./.pre-commit-hooks.yaml). |
+
+Details: [Commands](#commands) · [`runxmd verify`](#runxmd-verify--is-this-render-still-current)
+· [Step params](#step-params-timeout-stdin-if) · [Sharing state](#sharing-state-between-steps--session)
+· [Use in CI](#use-in-ci) · [`SPEC-v0.0.3.md` §6](./SPEC-v0.0.3.md).
+
+---
+
 ## The simplest possible file
 
 No `@workflow`. No `@memory`. No annotations at all — just prose and code steps.

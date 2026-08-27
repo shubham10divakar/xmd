@@ -19,8 +19,16 @@ class Result:
     code: int = 0
 
 
-def register(name: str):
+def register(name: str, *, deterministic: bool = True):
+    """Register a plugin handler.
+
+    ``deterministic=False`` marks a plugin whose output varies per run (``@http``,
+    ``@llm``). Renders tag such steps, provenance records their indices, and
+    ``runxmd run --pure`` refuses to execute them — so a claim of "computed
+    once, read forever" can be stated precisely over the deterministic subset.
+    """
     def deco(fn):
+        fn.deterministic = deterministic
         REGISTRY[name] = fn
         return fn
     return deco
@@ -28,3 +36,7 @@ def register(name: str):
 
 def get(name: str):
     return REGISTRY.get(name)
+
+
+def is_deterministic(name: str) -> bool:
+    return getattr(REGISTRY.get(name), "deterministic", True)

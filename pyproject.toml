@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Subham Divakar", email = "shubham.divakar@gmail.com" }]
 keywords = ["xmd", "runtime", "documents", "agents", "markdown", "workflow", "automation"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Environment :: Console",
@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Build Tools",
     "Topic :: Utilities",
 ]

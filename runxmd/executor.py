@@ -27,11 +27,51 @@ import re
 import time
 import uuid
 
-from . import plugins
+from dataclasses import dataclass, field as _field
+
+from . import cache as _cache
+from . import normalize as _normalize
+from . import plugins, provenance
 from .memory import substitute
 from .parser import Document, parse, parse_scalar, to_source
 
 RUNTIME_NAMESPACE = "runtime."
+
+
+class _Sessions:
+    """Accumulated code + stdout per ``session:`` name, for a single run."""
+
+    def __init__(self):
+        self._code: dict = {}
+        self._out: dict = {}
+
+    def prelude(self, name: str) -> str:
+        return self._code.get(name, "")
+
+    def stdout(self, name: str) -> str:
+        return self._out.get(name, "")
+
+    def record(self, name: str, full_code: str, full_stdout: str) -> None:
+        self._code[name] = full_code
+        self._out[name] = full_stdout
+
+
+@dataclass
+class RunReport:
+    """Outcome of a run, for callers that need more than the parsed Document.
+
+    ``run()`` still returns the ``Document`` (unchanged public contract); it
+    also attaches an instance of this as ``doc.report`` so the CLI can decide
+    an exit code without re-deriving anything.
+    """
+    all_ok: bool = True
+    failed_steps: list = _field(default_factory=list)   # (workflow, idx, plugin)
+    check_failed: bool = None                           # None → --check not run
+    check_target: str = ""
+    pure_refused: list = _field(default_factory=list)   # plugin names refused by --pure
+    cache_hits: int = 0
+    cache_misses: int = 0
+    records: dict = _field(default_factory=dict)        # {workflow: [step records]}
 
 _SET_RE = re.compile(r"^set:\s*memory\.([a-zA-Z0-9_.]+)\s*=\s*(.+)$")
 _WRITE_RE = re.compile(r"^write(?:\(([^)]+)\))?$")
@@ -52,16 +92,27 @@ def run(
     workflow_name: str = None,
     write_back: bool = False,
     save_context: bool = True,
+    add_provenance: bool = True,
+    check: bool = False,
+    normalize: bool = True,
+    pure: bool = False,
+    cache: bool = False,
+    force: bool = False,
+    timeout: float = None,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
         source = f.read()
     doc = parse(source)
+    report = RunReport()
+    doc.report = report
     run_id = uuid.uuid4().hex[:4]
 
     mem_sec = doc.section("memory")
     memory = dict(mem_sec.memory) if mem_sec else {}
-    ctx = {"memory": memory, "source_path": os.path.abspath(path)}
+    ctx = {"memory": memory, "source_path": os.path.abspath(path),
+           "normalize": normalize, "pure": pure,
+           "cache": cache, "force": force, "timeout": timeout}
 
     ctx_sec = doc.section("context_memory")
     if ctx_sec is not None:
@@ -82,6 +133,33 @@ def run(
     for wf in workflows:
         ok, records = run_workflow(wf, memory, ctx, out)
         wf_results[wf.name or ""] = records
+        if not ok:
+            report.all_ok = False
+            report.failed_steps += [
+                (wf.name or "", r["idx"], r["plugin"])
+                for r in records if not r["ok"]
+            ]
+        report.pure_refused += [
+            r["plugin"] for r in records
+            if r.get("code") == 2 and r["error"].startswith("refused:")
+        ]
+
+    report.records = wf_results
+
+    if cache:
+        stats = ctx.get("_cache_stats", {"hits": 0, "misses": 0})
+        report.cache_hits, report.cache_misses = stats["hits"], stats["misses"]
+        if stats["hits"] or stats["misses"]:
+            out(f"\n· cache: {stats['hits']} hit, {stats['misses']} miss")
+
+    header = _provenance_header(source, path, wf_results) if add_provenance else ""
+
+    # --check: compare a fresh default render against the committed one and
+    # report drift. Nothing is written, no hooks run — this is a read-only
+    # doctest for the whole document.
+    if check:
+        _run_check(source, wf_results, path, doc, header, report, out)
+        return doc
 
     hooks_sec = doc.section("on_done")
     output_written = False
@@ -89,12 +167,13 @@ def run(
         output_written = _apply_hooks(
             hooks_sec.hooks, memory, out,
             doc=doc, wf_results=wf_results, source_path=path, source=source,
+            header=header,
         )
 
     # Default: render mode — prose preserved, steps replaced with results.
     if not output_written and wf_results:
         _any = any(
-            (r["output"] if r["ok"] else r["error"]).strip()
+            _result_text(r)
             for recs in wf_results.values() for r in recs
         )
         if _any:
@@ -103,7 +182,7 @@ def run(
             _write_render_doc(
                 source, wf_results,
                 str(_p.parent / (_p.stem + "_render" + _p.suffix)),
-                out,
+                out, header=header,
             )
 
     # Append the run's captured records to @context_memory (raw jsonl log).
@@ -147,6 +226,12 @@ def watch(
     max_runs: int = 0,
     write_back: bool = False,
     save_context: bool = True,
+    add_provenance: bool = True,
+    normalize: bool = True,
+    pure: bool = False,
+    cache: bool = False,
+    force: bool = False,
+    timeout: float = None,
     out=print,
 ) -> None:
     """Re-run the document whenever it changes on disk."""
@@ -164,7 +249,9 @@ def watch(
                 if last is not None:
                     out("\n↻ change detected")
                 run(path, workflow_name=workflow_name, write_back=write_back,
-                    save_context=save_context, out=out)
+                    save_context=save_context, add_provenance=add_provenance,
+                    normalize=normalize, pure=pure, cache=cache, force=force,
+                    timeout=timeout, out=out)
                 runs += 1
                 try:
                     last = os.path.getmtime(path)
@@ -188,33 +275,154 @@ def run_steps(steps, memory, ctx, out) -> tuple:
     """Run a list of steps top-to-bottom; returns (all_ok, records)."""
     records = []
     for idx, step in enumerate(steps, 1):
-        ok, output, error, dur = _run_step(idx, step, memory, ctx, out)
+        ok, output, error, dur, code, skipped = _run_step(idx, step, memory, ctx, out)
         records.append({"idx": idx, "plugin": step.plugin,
                         "output": output, "error": error, "ok": ok,
-                        "duration_ms": dur})
+                        "duration_ms": dur, "code": code, "skipped": skipped})
     return all(r["ok"] for r in records), records
 
 
 def _run_step(idx, step, memory, ctx, out) -> tuple:
-    """Run one step; returns (ok, output, error, duration_ms)."""
+    """Run one step; returns (ok, stdout, stderr, duration_ms, exit_code, skipped)."""
     plugin = plugins.get(step.plugin)
     label = f"  step {idx} @{step.plugin}"
     if plugin is None:
         out(f"{label} ✗ unknown plugin")
-        return False, "", f"unknown plugin: @{step.plugin}", 0
+        return False, "", f"unknown plugin: @{step.plugin}", 0, 127, False
+
+    cond = step.params.get("if")
+    if cond not in (None, "") and not _eval_if(str(cond), memory, ctx):
+        out(f"{label} · skipped (if: {cond})")
+        return True, "", "", 0, 0, True
+
+    if ctx.get("pure") and not plugins.is_deterministic(step.plugin):
+        out(f"{label} ✗ refused (--pure): @{step.plugin} is non-deterministic")
+        return (False, "",
+                f"refused: @{step.plugin} is non-deterministic and --pure is set",
+                0, 2, False)
     ctx_summary = (ctx.get("context_memory") or {}).get("summary", "")
     params = {k: _subst_context(substitute(v, memory), ctx_summary)
-              for k, v in step.params.items() if k != "result"}
+              for k, v in step.params.items()
+              if k not in ("result", "redact", "session", "if")}
+
+    # session: <name> — steps sharing a name run with every earlier session
+    # step's code prepended, so a variable defined in one is visible in the
+    # next. Default (no session:) stays fully isolated. Implemented by
+    # re-execution + output prefix-subtraction, so it works for every language
+    # with no REPL protocol; the trade-off is that side effects in earlier
+    # session steps re-run each time.
+    session = step.params.get("session")
+    raw_run = params.get("run")
+
+    # content-addressed cache (opt-in: --cache). Language plugins only, never
+    # for session steps (their effective code varies with the prelude).
+    cache_key = None
+    if ctx.get("cache") and not session and _cache.cacheable(step.plugin):
+        stats = ctx.setdefault("_cache_stats", {"hits": 0, "misses": 0})
+        cache_key = _cache.key_for(step.plugin, params, ctx)
+        if not ctx.get("force"):
+            hit = _cache.load(cache_key)
+            if hit is not None:
+                stats["hits"] += 1
+                out(f"{label} ✓ (cached)")
+                _emit(hit["output"] if hit["ok"] else hit["error"], out)
+                return hit["ok"], hit["output"], hit["error"], 0, hit["code"], False
+        stats["misses"] += 1
+
+    sess = ctx.setdefault("_sessions", _Sessions()) if session else None
+    prelude = ""
+    if sess is not None and isinstance(raw_run, str):
+        prelude = sess.prelude(session)
+        if prelude:
+            params["run"] = prelude + "\n" + raw_run
+
     t0 = time.perf_counter()
     result = plugin(params, ctx)
     dur = int((time.perf_counter() - t0) * 1000)
+
+    if sess is not None and isinstance(raw_run, str):
+        full_code = prelude + "\n" + raw_run if prelude else raw_run
+        full_out = result.output or ""
+        prev = sess.stdout(session)
+        if prelude and full_out.startswith(prev):
+            result.output = full_out[len(prev):].lstrip("\n")
+        sess.record(session, full_code, full_out)
+
+    if ctx.get("normalize", True):
+        base = os.path.dirname(ctx.get("source_path", "") or "")
+        redact = step.params.get("redact", ())
+        result.output = _normalize.normalize_output(
+            result.output, base_dir=base, redact=redact)
+        result.error = _normalize.normalize_output(
+            result.error, base_dir=base, redact=redact)
+
+    if cache_key is not None and result.ok and result.code != 127:
+        _cache.store(cache_key, ok=result.ok, output=result.output or "",
+                     error=result.error or "", code=result.code)
+
     if result.ok:
         out(f"{label} ✓")
         _emit(result.output, out)
     else:
         out(f"{label} ✗ (exit {result.code})")
         _emit(result.error or result.output, out)
-    return result.ok, result.output or "", result.error or "", dur
+    return result.ok, result.output or "", result.error or "", dur, result.code, False
+
+
+def _result_text(r: dict) -> str:
+    """Text to show for a step in render/results output.
+
+    On success: stdout. On failure: stdout AND stderr (labelled by order) so a
+    step that printed partial output before dying doesn't hide it."""
+    if r.get("skipped"):
+        return ""
+    if r["ok"]:
+        return (r["output"] or "").strip()
+    parts = [s.strip() for s in (r.get("output") or "", r.get("error") or "") if s.strip()]
+    return "\n".join(parts).strip()
+
+
+_IF_CMP = re.compile(r"^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$")
+
+
+def _if_lookup(ref: str, memory: dict, ctx: dict):
+    ref = ref.strip()
+    if ref.startswith("memory."):
+        return memory.get(ref[7:])
+    if ref in ("context", "context_memory"):
+        return (ctx.get("context_memory") or {}).get("summary", "")
+    return parse_scalar(ref)
+
+
+def _eval_if(expr: str, memory: dict, ctx: dict) -> bool:
+    """Evaluate a step ``if:`` guard. Supported forms:
+
+        if: memory.flag                 # truthy
+        if: not memory.flag             # falsy
+        if: memory.count >= 3           # ==  !=  >  <  >=  <=  vs a scalar
+        if: memory.mode == "fast"
+        if: context                     # rolling summary is non-empty
+    """
+    expr = expr.strip()
+    neg = False
+    if expr[:4].lower() == "not ":
+        neg, expr = True, expr[4:].strip()
+    m = _IF_CMP.match(expr)
+    if m:
+        lhs = _if_lookup(m.group(1), memory, ctx)
+        rhs = parse_scalar(m.group(3).strip())
+        op = m.group(2)
+        try:
+            res = {
+                "==": lhs == rhs, "!=": lhs != rhs,
+                ">": lhs > rhs, "<": lhs < rhs,
+                ">=": lhs >= rhs, "<=": lhs <= rhs,
+            }[op]
+        except TypeError:
+            res = False
+    else:
+        res = bool(_if_lookup(expr, memory, ctx))
+    return (not res) if neg else bool(res)
 
 
 def _subst_context(value, summary: str):
@@ -229,6 +437,29 @@ def _emit(text, out) -> None:
     if text and text.strip():
         for ln in text.rstrip().splitlines():
             out(f"      {ln}")
+
+
+# ---------------------------------------------------------------------------
+# Provenance — every output file records what it is a render of (JOT plan A1)
+# ---------------------------------------------------------------------------
+
+def _provenance_header(source: str, source_path: str, wf_results: dict) -> str:
+    """Build the provenance HTML comment for this run's output files."""
+    names: set = set()
+    nd: list = []
+    gi = 0
+    for recs in wf_results.values():
+        for r in recs:
+            gi += 1
+            names.add(r["plugin"])
+            if not plugins.is_deterministic(r["plugin"]):
+                nd.append(gi)
+    return provenance.build(
+        source,
+        source_name=os.path.basename(source_path) if source_path else "",
+        plugin_names=names,
+        non_deterministic_steps=nd,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -303,8 +534,13 @@ def _render_source(source: str, wf_results: dict) -> str:
             # Emit result in place of the step block
             if step_idx < len(all_results):
                 r = all_results[step_idx]
-                text = (r["output"] if r["ok"] else r["error"]).strip()
+                text = _result_text(r)
                 if text:
+                    if not plugins.is_deterministic(r["plugin"]):
+                        out_lines.append(
+                            f"<!-- non-deterministic: @{r['plugin']} — "
+                            f"this output is a sample, not a computed fact -->"
+                        )
                     out_lines.append(text)
                     out_lines.append("")
             step_idx += 1
@@ -321,8 +557,14 @@ def _render_source(source: str, wf_results: dict) -> str:
     return "\n".join(out_lines) + "\n"
 
 
-def _write_render_doc(source: str, wf_results: dict, out_path: str, out) -> None:
+def _render_content(source: str, wf_results: dict, header: str = "") -> str:
     content = _render_source(source, wf_results)
+    return provenance.prepend(content, header) if header else content
+
+
+def _write_render_doc(source: str, wf_results: dict, out_path: str, out,
+                      header: str = "") -> None:
+    content = _render_content(source, wf_results, header)
     parent = os.path.dirname(out_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -332,17 +574,68 @@ def _write_render_doc(source: str, wf_results: dict, out_path: str, out) -> None
 
 
 # ---------------------------------------------------------------------------
+# --check — read-only drift check against the committed render (JOT plan A2)
+# ---------------------------------------------------------------------------
+
+def _default_render_path(source_path: str) -> str:
+    import pathlib
+    p = pathlib.Path(source_path)
+    return str(p.parent / (p.stem + "_render" + p.suffix))
+
+
+def _run_check(source, wf_results, source_path, doc, header, report, out) -> None:
+    # Honour an explicit render(name) hook target if one is set.
+    target = _default_render_path(source_path)
+    hooks_sec = doc.section("on_done")
+    if hooks_sec:
+        for h in hooks_sec.hooks:
+            m = _RENDER_RE.match(h.strip())
+            if m and (m.group(1) or "").strip():
+                target = (m.group(1) or "").strip()
+                break
+    report.check_target = target
+
+    fresh = provenance.strip_header(_render_content(source, wf_results, header))
+    if not os.path.isfile(target):
+        report.check_failed = True
+        out(f"✗ check: {target} does not exist — run `runxmd run {source_path}` to create it")
+        return
+    with open(target, encoding="utf-8") as f:
+        committed = provenance.strip_header(f.read())
+
+    if fresh == committed:
+        report.check_failed = False
+        out(f"✓ check: {target} is up to date")
+        return
+
+    report.check_failed = True
+    import difflib
+    diff = list(difflib.unified_diff(
+        committed.splitlines(), fresh.splitlines(),
+        fromfile=f"{target} (committed)", tofile="fresh run", lineterm="",
+    ))
+    out(f"✗ check: {target} is stale — {sum(1 for d in diff if d.startswith(('+', '-')) and not d.startswith(('+++', '---')))} changed line(s)")
+    for line in diff[:40]:
+        out("    " + line)
+    if len(diff) > 40:
+        out(f"    … ({len(diff) - 40} more diff lines)")
+
+
+# ---------------------------------------------------------------------------
 # Results mode — step outputs only, no prose
 # ---------------------------------------------------------------------------
 
-def _write_results_doc(wf_results: dict, out_path: str, out) -> None:
+def _write_results_doc(wf_results: dict, out_path: str, out,
+                       header: str = "") -> None:
     blocks = []
     for records in wf_results.values():
         for r in records:
-            text = (r["output"] if r["ok"] else r["error"]).strip()
+            text = _result_text(r)
             if text:
                 blocks.append(text)
     content = "\n\n".join(blocks) + "\n"
+    if header:
+        content = provenance.prepend(content, header)
     parent = os.path.dirname(out_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -355,25 +648,37 @@ def _write_results_doc(wf_results: dict, out_path: str, out) -> None:
 # Write mode — replica with result: fields injected
 # ---------------------------------------------------------------------------
 
-def _write_output_doc(doc, wf_results: dict, out_path: str, out) -> None:
+def _write_output_doc(doc, wf_results: dict, out_path: str, out,
+                      header: str = "") -> None:
     new_doc = copy.deepcopy(doc)
     for sec in new_doc.sections:
         if sec.kind != "workflow":
             continue
         records = wf_results.get(sec.name or "", [])
         for i, step in enumerate(sec.steps):
-            step.params.pop("result", None)
+            for stale in ("result", "status", "exit_code", "stderr"):
+                step.params.pop(stale, None)
             if i >= len(records):
                 continue
             r = records[i]
             text = (r["output"] if r["ok"] else r["error"]).strip()
             if text:
                 step.params["result"] = text
+            # Record status + exit code so a re-run diff catches a step that
+            # started failing even when it prints nothing (JOT plan A2).
+            step.params["status"] = "ok" if r["ok"] else "error"
+            step.params["exit_code"] = r.get("code", 0)
+            err = (r.get("error") or "").strip()
+            if err and err != text:
+                step.params["stderr"] = err
+    content = to_source(new_doc)
+    if header:
+        content = provenance.prepend(content, header)
     parent = os.path.dirname(out_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
-        f.write(to_source(new_doc))
+        f.write(content)
     out(f"\n· output written → {out_path}")
 
 
@@ -382,7 +687,8 @@ def _write_output_doc(doc, wf_results: dict, out_path: str, out) -> None:
 # ---------------------------------------------------------------------------
 
 def _apply_hooks(hooks, memory, out,
-                 doc=None, wf_results=None, source_path=None, source=None) -> bool:
+                 doc=None, wf_results=None, source_path=None, source=None,
+                 header="") -> bool:
     """Process @on_done hooks; returns True if any output hook ran."""
     import pathlib
     output_written = False
@@ -402,7 +708,7 @@ def _apply_hooks(hooks, memory, out,
             else:
                 p = pathlib.Path(source_path)
                 out_path = str(p.parent / (p.stem + "_render" + p.suffix))
-            _write_render_doc(source, wf_results, out_path, out)
+            _write_render_doc(source, wf_results, out_path, out, header=header)
             output_written = True
             continue
 
@@ -418,7 +724,7 @@ def _apply_hooks(hooks, memory, out,
             else:
                 p = pathlib.Path(source_path)
                 out_path = str(p.parent / (p.stem + "_results" + p.suffix))
-            _write_results_doc(wf_results, out_path, out)
+            _write_results_doc(wf_results, out_path, out, header=header)
             output_written = True
             continue
 
@@ -434,7 +740,7 @@ def _apply_hooks(hooks, memory, out,
             else:
                 p = pathlib.Path(source_path)
                 out_path = str(p.parent / (p.stem + "_output" + p.suffix))
-            _write_output_doc(doc, wf_results, out_path, out)
+            _write_output_doc(doc, wf_results, out_path, out, header=header)
             # write alone does NOT suppress default render
             continue
 
@@ -479,13 +785,14 @@ def _build_context_records(run_id: str, wf_results: dict,
             text = " ".join(text.split())
             if len(text) > cap:
                 text = text[:cap - 1] + "…"
+            status = "skip" if r.get("skipped") else ("ok" if r["ok"] else "err")
             records.append({
                 "time": now,
                 "run": run_id,
                 "workflow": wf_name or None,
                 "step": r["idx"],
                 "plugin": r["plugin"],
-                "status": "ok" if r["ok"] else "err",
+                "status": status,
                 "duration_ms": r.get("duration_ms"),
                 "output": text,
             })

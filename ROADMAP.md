@@ -14,13 +14,17 @@ and *does it give a human a reason to trust it today?*
 
 ---
 
-## Where it is now — v1.0.2 (shipped)
+## Where it is now — v1.0.3 (shipped)
 
 Parser → executor → CLI; plugins (`@print`, `@shell`, `@python`/`@node`/`@ruby`/
 `@bash`, `@http`, `@write`, `@read`, `@llm`); three memory powers; field
 ownership (`runtime.*`); `watch` (polling); the agent engine (`runxmd agent`:
 plan → execute → update); output modes (render/results/write); guardrails;
 cross-platform. SPEC at Layer 7.
+
+**v1.0.3 trust layer** (the JOT hardening pass — see [`JOT-REVIEW-PLAN.md`](JOT-REVIEW-PLAN.md)):
+provenance headers + `runxmd verify`; `run --strict` / `--check`; output
+normalization + `redact:`; `run --pure` + the `deterministic=False` plugin flag.
 
 ---
 

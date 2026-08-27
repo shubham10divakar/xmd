@@ -7,7 +7,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
 [![Downloads](https://static.pepy.tech/badge/runxmd)](https://pepy.tech/project/runxmd)
-[![status](https://img.shields.io/badge/status-v1.0.2-blue)](./SPEC-v0.0.3.md)
+[![status](https://img.shields.io/badge/status-v1.0.3-blue)](./SPEC-v0.0.3.md)
 [![deps](https://img.shields.io/badge/dependencies-zero-brightgreen)](#)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)](#)
 
@@ -482,6 +482,29 @@ Mix languages freely in the same file:
 Each step runs in isolation. If an interpreter is missing, that step is marked ✗
 and execution continues with the next step.
 
+### Sharing state between steps — `session:`
+
+Isolation is the default (and the reason step order doesn't matter). When you
+*do* want a variable from one step visible in the next, give both steps the
+same `session:` name:
+
+```markdown
+- @python
+  session: calc
+  run: |
+    total = sum(range(100))
+
+- @python
+  session: calc
+  run: |
+    print("total:", total)     # sees `total` from the step above
+```
+
+Same-session steps re-run the earlier code as a prelude, so side effects in
+earlier session steps (prints, file writes, requests) happen again each time a
+later step runs. Use it for building up a computation; keep the default
+isolation for everything else.
+
 ---
 
 ## Watch mode
@@ -516,9 +539,10 @@ Planning requires `ANTHROPIC_API_KEY`. See [`examples/AGENT.xmd`](./examples/AGE
 ## Commands
 
 ```bash
-runxmd run <file> [--workflow NAME] [--write-back]
-runxmd watch <file> [--interval S] [--max-runs N] [--write-back]
+runxmd run <file> [--workflow NAME] [--write-back] [--strict] [--check] [--pure] [--raw] [--no-provenance]
+runxmd watch <file> [--interval S] [--max-runs N] [--write-back] [--strict] [--pure] [--raw]
 runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
+runxmd verify <render> [--source FILE]
 runxmd check
 runxmd parse <file>
 runxmd validate <file>
@@ -527,9 +551,82 @@ runxmd --version
 
 | Flag | Applies to | Effect |
 |---|---|---|
-| `--write-back` | `run`, `watch` | Persist `runtime.*` memory back into the source file |
 | `--workflow NAME` | `run`, `watch` | Run only the named workflow |
-| `--write-back` omitted | default | Source file is never modified |
+| `--write-back` | `run`, `watch` | Persist `runtime.*` memory back into the source file (default: off, source untouched) |
+| `--strict` | `run`, `watch` | Exit non-zero if any step fails — use as a CI gate |
+| `--check` | `run` | Don't write; compare a fresh render against the committed one and exit non-zero on drift (a doctest for the whole document) |
+| `--pure` | `run`, `watch` | Refuse non-deterministic steps (`@http`, `@llm`); exit 2 if any are present |
+| `--cache` | `run`, `watch` | Reuse a cached result for a language step whose plugin, params, interpreter version and script bytes are unchanged (`--force` to ignore existing entries) |
+| `--timeout SECONDS` | `run`, `watch` | Default per-step timeout; a step's own `timeout:` param wins |
+| `--json` | `run` | Print a JSON execution trace to stdout (suppresses normal output) |
+| `--raw` | `run`, `watch` | Don't normalize step output (keep absolute paths, `\`, `$HOME`, hostname verbatim) |
+| `--no-provenance` | `run`, `watch` | Omit the `runxmd-provenance` header from output files |
+
+### Step params: `timeout:`, `stdin:`, `if:`
+
+Any code step also takes:
+
+```markdown
+- @python
+  timeout: 10               # kill after 10s (exit 124)
+  stdin: "input fed to the script"
+  if: memory.enabled        # skip the step unless the guard holds
+  run: |
+    import sys; print(sys.stdin.read())
+```
+
+`if:` guards: `memory.<key>` (truthy), `not memory.<key>`,
+`memory.<key> == "x"` (also `!= > < >= <=`), `context` (rolling summary set).
+A skipped step counts as ok and renders nothing.
+
+### `runxmd verify` — is this render still current?
+
+Every render / results / output file carries an invisible provenance header:
+
+```
+<!-- runxmd-provenance
+source: report.md
+source_sha256: 3f9a…c21
+runxmd_version: 1.0.3
+generated_utc: 2026-08-27T09:14:22Z
+platform: linux-x86_64
+interpreters: {python: Python 3.14.5}
+non_deterministic_steps: []
+-->
+```
+
+`runxmd verify report_render.md` re-hashes `report.md` and exits **0** if it
+still matches, **3** if the source has changed since the render was generated
+(STALE), **2** if there's no header. Wire it into a pre-commit hook or CI so a
+stale render can't be trusted by accident.
+
+### Use in CI
+
+**Raw commands** — in any workflow step:
+
+```bash
+pip install runxmd
+runxmd verify docs/report_render.md         # 0 fresh · 3 stale · 2 no header
+runxmd run docs/report.md --check           # rebuild in memory, diff, exit 1 on drift
+runxmd run docs/report.md --strict          # exit non-zero if any step fails
+```
+
+**GitHub Action** — this repo ships a composite action:
+
+```yaml
+# .github/workflows/docs.yml
+jobs:
+  renders-are-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shubham10divakar/xmd@v1          # runxmd verify
+        with:
+          # verify: "docs/*_render.md"         # default: all tracked *_render.* / *_results.* / *_output.*
+          check: "docs/report.md README.md"    # also `runxmd run --check` these sources
+```
+
+A stale render fails the job with a `::error::` annotation.
 
 ---
 
@@ -552,9 +649,15 @@ runxmd --version
 
 ## Status & roadmap
 
-**Current: v1.0.2** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the full contract.
+**Current: v1.0.3** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the full
+contract. (The spec document keeps its own `v0.0.x` numbering, independent of
+the package version; `SPEC-v0.0.3.md` is the current one.)
 
-- ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `parse` / `validate` / `check`)
+- ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `verify` / `parse` / `validate` / `check`)
+- ✅ Provenance headers + `runxmd verify` — a render carries the SHA-256 of its source
+- ✅ `run --strict` / `run --check` — use a document's outputs as a CI doctest
+- ✅ Output normalization (paths, `$HOME`, hostname, separators) + `redact:` — diffable renders
+- ✅ `run --pure` — refuse non-deterministic steps so the render is a computed fact
 - ✅ Plugins: shell, http, filesystem, llm
 - ✅ Inline language plugins: Python, Node.js, TypeScript, Ruby, Bash, Go, R, PHP, Perl, PowerShell
 - ✅ External script plugins: `@python_script`, `@node_script`, and one for every supported language

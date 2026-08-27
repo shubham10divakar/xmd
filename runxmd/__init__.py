@@ -1,7 +1,10 @@
 """XMD — a runtime that executes documents.
 
-v0.0.1: parse an .xmd document, run its workflows with inline-code plugins,
-resolve and persist memory. The document becomes the system.
+Parse an .xmd document, run its workflows with inline-code plugins, resolve and
+persist memory. The document becomes the system.
+
+v1.0.3 adds the trust layer: provenance headers + `runxmd verify`, `run
+--strict` / `--check`, output normalization, and `run --pure`.
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"

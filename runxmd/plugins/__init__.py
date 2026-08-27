@@ -2,6 +2,6 @@
 from __future__ import annotations
 
 from . import fs, http, lang, llm, shell  # noqa: F401  (import side-effect: registration)
-from .base import REGISTRY, Result, get, register
+from .base import REGISTRY, Result, get, is_deterministic, register
 
-__all__ = ["REGISTRY", "Result", "get", "register"]
+__all__ = ["REGISTRY", "Result", "get", "is_deterministic", "register"]

@@ -95,13 +95,107 @@ file.
 ## 6. CLI (full)
 
 ```bash
-runxmd run <file> [--workflow NAME] [--no-write]
-runxmd watch <file> [--interval S] [--max-runs N] [--no-write]
+runxmd run <file> [--workflow NAME] [--write-back] [--no-save] \
+                  [--strict] [--check] [--pure] [--raw] [--no-provenance]
+runxmd watch <file> [--interval S] [--max-runs N] [--write-back] [--no-save] \
+                    [--strict] [--pure] [--raw] [--no-provenance]
 runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
+runxmd verify <render> [<render> …] [--source FILE]
+runxmd check
 runxmd parse <file>
-runxmd validate <file>
+runxmd validate <file> [<file> …]
 runxmd --version
 ```
+
+Source files are read-only by default; `--write-back` is opt-in and only ever
+touches `runtime.*` memory. `--no-save` suppresses the `@context_memory`
+append.
+
+### 6.1 Trust layer (v1.0.3)
+
+- **Provenance.** Every render / results / output file is prefixed with an HTML
+  comment recording `source_sha256` (SHA-256 of the source, normalized:
+  BOM-stripped, CRLF→LF, per-line rstrip, single trailing newline),
+  `runxmd_version`, `generated_utc`, `platform`, the `interpreters` that ran,
+  and `non_deterministic_steps`. `--no-provenance` omits it.
+- **`runxmd verify <render>`** — re-hashes the source named in the header;
+  exit 0 = matches, 3 = STALE, 2 = no header / source not found.
+- **`--strict`** — a failed step propagates a non-zero exit code.
+- **`--check`** — build a fresh render in memory, compare (header-stripped)
+  against the committed one, exit 1 on drift; nothing is written.
+- **Normalization** (default on, `--raw` off) — step output has paths under the
+  document directory made relative, `$HOME`→`~`, hostname→`HOST`, and `\`→`/`
+  inside path-like tokens. A step's `redact:` param (one literal or `/regex/`
+  per line) blanks volatile substrings.
+- **`--pure`** — refuse to execute non-deterministic plugins (`@http`, `@llm`);
+  exit 2 if any are present. Plugins declare this via
+  `register(name, deterministic=False)`.
+
+### 6.2 `session:` — opt-in shared scope (v1.0.3)
+
+By default every step runs in a fresh subprocess with **no shared state** —
+`@workflow` Property 2 (order-independence of pure steps) holds *for the default
+configuration*.
+
+A step may set `session: <name>`. Steps that share a session name run with
+every earlier same-session step's `run:` code prepended, so a name bound in one
+step is visible in the next:
+
+```markdown
+- @python
+  session: calc
+  run: |
+    total = sum(range(100))
+
+- @python
+  session: calc
+  run: |
+    print("total:", total)     # sees `total` from the step above
+```
+
+Mechanism: re-execution with prefix-subtraction on stdout (the earlier steps'
+output is stripped from what this step reports). This needs no per-language REPL
+protocol, but **side effects in earlier session steps re-run** each time a later
+step in that session runs. Sessions are therefore an explicit opt-out of
+Property 2, not the default.
+
+### 6.3 `--cache` — content-addressed step cache (v1.0.3)
+
+`runxmd run --cache` reuses a language step's cached stdout / stderr / exit code
+when nothing that can change its output has changed. The cache key is
+`sha256(runxmd_version, plugin, params, interpreter_version, script_bytes)`;
+entries live under `RUNXMD_CACHE_DIR` or `~/.cache/runxmd`. `--force` ignores
+existing entries (still refreshing them).
+
+Only language plugins (`@python` … `@powershell` and their `*_script` forms)
+are cacheable — they carry the subprocess cold-start cost and their output is a
+pure function of the key. `@shell`, `@read`, `@write`, `@http`, `@llm`, and
+`session:` steps are never cached. Failed runs and "interpreter not found"
+(exit 127) are not stored.
+
+### 6.4 Step params: `timeout:`, `stdin:`, `if:` (v1.0.3)
+
+Any code step (`@python` … `@powershell`, `*_script`, `@shell`) accepts:
+
+- **`timeout: <seconds>`** — kill the step after N seconds (exit code 124,
+  `... timed out after Ns`). `run --timeout N` sets a default for every step; a
+  step's own `timeout:` wins. No timeout by default.
+- **`stdin: <text>`** — feed `<text>` to the step's standard input.
+- **`if: <guard>`** — run the step only if the guard holds, else mark it
+  `skipped` (counts as ok; nothing rendered). Guards:
+  `memory.<key>` (truthy), `not memory.<key>`, `memory.<key> <op> <scalar>`
+  (`== != > < >= <=`), and `context` (rolling summary non-empty).
+
+`stdout` and `stderr` are captured separately end-to-end; the `write`
+projection records `status:` / `exit_code:` / `stderr:` per step, and
+render / results show stdout **and** stderr for a failed step.
+
+### 6.5 `--json` trace
+
+`runxmd run --json` suppresses the normal output and prints one JSON object:
+`{file, runxmd_version, workflows: {name: [step records]}, all_ok,
+failed_steps, cache}`. Each step record is
+`{idx, plugin, output, error, ok, duration_ms, code, skipped}`.
 
 ---
 
@@ -117,6 +211,13 @@ runxmd --version
 
 ## 8. Changelog
 
+> Spec-document numbering (`v0.0.x`) is independent of the package version
+> (`1.0.x`). This document, `SPEC-v0.0.3.md`, is current as of package
+> **v1.0.3**.
+
+- **package v1.0.3** — trust layer (§6.1): provenance headers + `runxmd
+  verify`; `run --strict` / `--check`; output normalization + `redact:`;
+  `run --pure` + `deterministic=False` plugin flag.
 - **v0.0.3** — agent engine (`runxmd agent`: plan → execute → update, agent-author
   mode); `@llm` plugin; reusable `run_workflow` / `run_steps` executor helpers.
 - **v0.0.2** — `@http`, `@write`, `@read`; `runxmd watch`; field ownership (§4.1).

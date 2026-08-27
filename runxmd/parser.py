@@ -233,6 +233,14 @@ def _parse_steps(body: list) -> list:
             i += 1
             continue
         if cur is not None and ":" in stripped:
+            # A step param is always indented under its `- @plugin` line. A
+            # `key: value`-looking line at column 0 is inter-step prose that
+            # merely contains a colon ("Note: …") — it must NOT be absorbed as
+            # a param. Stop attaching to this step; a later `- @plugin` resets.
+            if raw[:1] not in (" ", "\t"):
+                cur = None
+                i += 1
+                continue
             key, val = stripped.split(":", 1)
             key, val = key.strip(), val.strip()
             if val == "|":  # block scalar

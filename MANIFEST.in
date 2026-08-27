@@ -1,6 +1,9 @@
 include README.md
 include LICENSE
+include ROADMAP.md
+include GRAMMAR.md
 include SPEC-v0.0.1.md
 include SPEC-v0.0.2.md
+include SPEC-v0.0.3.md
 recursive-include docs *.md
-recursive-include examples *.xmd
+recursive-include examples *.xmd *.md

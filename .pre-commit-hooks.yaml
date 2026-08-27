@@ -1,0 +1,13 @@
+- id: runxmd-verify
+  name: runxmd verify (renders match their sources)
+  description: Fail the commit if a committed render is stale with its source.
+  entry: runxmd verify
+  language: python
+  files: '_(render|results|output)\.(md|xmd)$'
+
+- id: runxmd-validate
+  name: runxmd validate
+  description: Reject .xmd files with grammar errors (see GRAMMAR.md).
+  entry: runxmd validate
+  language: python
+  files: '\.xmd$'

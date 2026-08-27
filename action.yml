@@ -1,0 +1,92 @@
+name: "runxmd verify"
+description: >
+  Fail CI when a committed runxmd render is out of date with its source.
+  Runs `runxmd verify` on render/results/output files (checking the SHA-256 in
+  each file's provenance header against the current source) and, optionally,
+  `runxmd run --check` to rebuild each render in memory and diff it.
+author: "Subham Divakar"
+branding:
+  icon: "check-circle"
+  color: "green"
+
+inputs:
+  verify:
+    description: >
+      Space- or newline-separated render files to verify. Default: every
+      git-tracked *_render.* / *_results.* / *_output.* file.
+    required: false
+    default: ""
+  check:
+    description: >
+      Space- or newline-separated SOURCE files to additionally rebuild and diff
+      with `runxmd run --check`. Empty (default) skips this pass.
+    required: false
+    default: ""
+  allow-missing:
+    description: >
+      If "true", a file with no runxmd-provenance header (verify exit 2) is
+      skipped instead of failing. A stale render (exit 3) always fails.
+    required: false
+    default: "false"
+  version:
+    description: >
+      pip version spec appended to `runxmd`, e.g. "==1.0.3" or ">=1.0.3".
+      Default: latest release.
+    required: false
+    default: ""
+  python-version:
+    description: "Python version for actions/setup-python."
+    required: false
+    default: "3.x"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install runxmd
+      shell: bash
+      run: python -m pip install --upgrade "runxmd${{ inputs.version }}"
+
+    - name: runxmd verify
+      shell: bash
+      run: |
+        set -uo pipefail
+        files="${{ inputs.verify }}"
+        if [ -z "${files// }" ]; then
+          files=$(git ls-files '*_render.md' '*_render.xmd' \
+                               '*_results.md' '*_results.xmd' \
+                               '*_output.md' '*_output.xmd')
+        fi
+        if [ -z "${files// }" ]; then
+          echo "No render files to verify."; exit 0
+        fi
+        rc=0
+        for f in $files; do
+          echo "::group::runxmd verify $f"
+          runxmd verify "$f"; code=$?
+          echo "::endgroup::"
+          if [ "$code" -eq 3 ]; then rc=1
+          elif [ "$code" -eq 2 ] && [ "${{ inputs.allow-missing }}" != "true" ]; then rc=1
+          fi
+        done
+        if [ "$rc" -ne 0 ]; then
+          echo "::error::one or more renders are stale — re-run 'runxmd run' and commit"
+        fi
+        exit $rc
+
+    - name: runxmd run --check
+      if: ${{ inputs.check != '' }}
+      shell: bash
+      run: |
+        set -uo pipefail
+        rc=0
+        for src in ${{ inputs.check }}; do
+          echo "::group::runxmd run --check $src"
+          runxmd run "$src" --check || rc=1
+          echo "::endgroup::"
+        done
+        exit $rc

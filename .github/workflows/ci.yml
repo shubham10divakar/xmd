@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[test]"
+      - run: pytest -q
+
+  self-check:
+    # Dogfood: the repo's own committed renders must match their sources,
+    # and every example doc must pass `runxmd validate`.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python -m pip install -e .
+      - name: renders are current
+        run: |
+          # exit 3 = stale (fail); exit 2 = no provenance header yet (skip)
+          rc=0
+          for f in $(git ls-files '*_render.md' '*_render.xmd'); do
+            runxmd verify "$f"; code=$?
+            if [ "$code" -eq 3 ]; then rc=1
+            elif [ "$code" -eq 2 ]; then echo "skip (no header): $f"
+            fi
+          done
+          exit $rc
+      - name: example docs validate
+        run: |
+          rc=0
+          for f in $(git ls-files 'examples/*.md' 'examples/*.xmd' 'examples/**/*.md'); do
+            case "$f" in
+              *_render.*|*_results.*|*_output.*) continue ;;
+            esac
+            runxmd validate "$f" || rc=1
+          done
+          exit $rc

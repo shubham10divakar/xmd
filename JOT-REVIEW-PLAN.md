@@ -251,19 +251,30 @@ section a number.
 - [x] Regenerated `file_checks_test_render.md` so its header reads
       `runxmd_version: 1.0.3`; `verify` passes.
 
-### ⬜ C7. Decide what the grammar actually is
+### ✅ C7. Decide what the grammar actually is
 
 `run: |` looks like a YAML block scalar; users will assume YAML quoting /
 escaping / anchors and be wrong in hard-to-debug ways.
 
-- [ ] Pick (a) a documented YAML subset (state exactly which), or (b) keep the
-      bespoke parser but document every divergence explicitly. (a) preferred —
-      less support burden later.
-- [ ] `runxmd validate` rejects constructs it can't handle rather than silently
-      misparsing (also `TODO-v1.0.3.md` P1).
-- [ ] Regression tests for every patched heuristic: prose-with-colon, 0-indent
-      prose between steps, `result:` alongside `run:`, multi-param block
-      scalars.
+- [x] **Decision: (b)** — keep the bespoke parser, document every divergence,
+      make `validate` reject what it can't handle. (a) rejected: pulls a YAML
+      dependency (or a big hand-rolled subset) into a zero-dep tool for a
+      deliberately tiny format. Rationale recorded at the top of `GRAMMAR.md`.
+- [x] New `GRAMMAR.md` — full grammar + a 15-row "Divergences from YAML" table
+      (anchors, flow collections, folded scalars, tabs, escape sequences,
+      `yes`/`no`, number forms, `---`, nested maps, duplicate keys, …).
+- [x] New `runxmd/lint.py` + deepened `runxmd validate`:
+      **errors (exit 1)** — tab indentation, `>` folded scalars, flow-collection
+      values, anchor/alias syntax, unknown `@plugin`, unrecognised `@on_done`
+      hook; **warnings (exit 0)** — unknown `@section`, param-less code step,
+      block scalar that over-captured a `- @…` line.
+- [x] **Parser bug fixed** (TODO-v1.0.3 P1, "prose-with-colon absorbed as a
+      step param"): a `key: value`-looking line at column 0 after a step is now
+      inter-step prose, not a silently-attached param.
+- [x] `tests/test_parser_heuristics.py` (6) — prose-with-colon, 0-indent prose
+      ends a block scalar, `result:` alongside `run:`, multi-param block
+      scalars, block-scalar terminates on next step, dotted memory keys stay
+      flat. `tests/test_lint.py` (13). Full suite 160 green.
 
 ### ⬜ C9. Adoption path
 

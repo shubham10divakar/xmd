@@ -179,7 +179,9 @@ def main(argv=None) -> int:
 
 def _validate(path: str) -> int:
     try:
-        doc = _load(path)
+        with open(path, encoding="utf-8") as f:
+            source = f.read()
+        doc = parse(source)
     except Exception as e:  # noqa: BLE001 — surface any parse failure to the user
         print(f"✗ failed to parse {path}: {e}")
         return 1
@@ -190,6 +192,20 @@ def _validate(path: str) -> int:
     for s in doc.sections:
         name = f" {s.name}" if s.name else ""
         print(f"  @{s.kind}{name}")
+
+    from . import lint as _lint
+    problems = _lint.lint(source, doc)
+    errors = [m for sev, m in problems if sev == "error"]
+    warns = [m for sev, m in problems if sev == "warn"]
+    for m in errors:
+        print(f"  ✗ {m}")
+    for m in warns:
+        print(f"  ⚠ {m}")
+    if errors:
+        print(f"\n✗ {path}: {len(errors)} error(s), {len(warns)} warning(s)")
+        return 1
+    if warns:
+        print(f"\n⚠ {path}: {len(warns)} warning(s) (parses, but check these)")
     return 0
 
 

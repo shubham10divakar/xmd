@@ -10,11 +10,15 @@ implementation difficulty.
 Last updated: 2026-08-27
 
 **Progress:** Tier A ✅ (A1 A2 A4 A6) · Tier B ✅ (B3 B5 B10) · C7 ✅ · C8 ✅ ·
-C9 🔧 (Action + CI + pre-commit shipped; VS Code ext + third-party PR are
-human-time and open) — all on branch `jot-tier-a`, **160 tests green**.
-Remaining non-blocking follow-ups: `readme_showcase` regen on a
-full-interpreter box, `agent --autonomous` non-determinism tagging,
-cold-vs-warm cache timing number for the paper, the third-party conversion PR.
+C9 ✅ for the code parts (Action + CI + pre-commit). **160 tests green.**
+
+Shipped: branch `jot-tier-a` merged to `main` (`f055016`, `--no-ff`), pushed to
+`origin`, tagged **`v1.0.3`** (annotated, pushed). Version is `1.0.3` in code.
+
+**Not done** — see the "Pending" section at the bottom. Nothing code-blocking
+remains; the open items are paper-writing inputs, two human-time adoption
+moves, one deferred-by-choice rule, and one showcase file that needs a
+full-interpreter box.
 
 ---
 
@@ -38,8 +42,8 @@ is real — nothing was already done or misdiagnosed.
 
 **Also found (not on the original list):**
 
-- ⬜ CLI/spec drift: `SPEC-v0.0.3.md:97` documents `--no-write`; actual flags are `--write-back` / `--no-save`. Fix with #8.
-- ⬜ `agent.py:117` still uses `to_source` for write-back → reformats whole doc. Relevant to #4's "diffable" argument. (`TODO-v1.0.3.md` P2.)
+- ✅ CLI/spec drift: `SPEC-v0.0.3.md` documented `--no-write`; actual flags are `--write-back` / `--no-save`. Fixed in C8.
+- ⬜ `agent.py:117` still uses `to_source` for write-back → reformats whole doc. Relevant to #4's "diffable" argument. (`TODO-v1.0.3.md` P2 — out of JOT scope, still open.)
 
 ---
 
@@ -77,7 +81,8 @@ contribution to write about.
 - [x] `tests/test_provenance.py` — 11 tests: hash canonicalization, header
       emit/parse, `--no-provenance`, results+output headers, verify 0/2/3,
       explicit `--source`, `.xmd`, `strip_header` idempotence.
-- [ ] Wire into a pre-commit hook + the GitHub Action (see C9).
+- [x] Wired into a pre-commit hook (`.pre-commit-hooks.yaml`) + the GitHub
+      Action (`action.yml`) — see C9.
 
 Header shape:
 
@@ -276,7 +281,7 @@ escaping / anchors and be wrong in hard-to-debug ways.
       scalars, block-scalar terminates on next step, dotted memory keys stay
       flat. `tests/test_lint.py` (13). Full suite 160 green.
 
-### 🔧 C9. Adoption path
+### ✅ C9. Adoption path (code parts) — two human-time items remain
 
 - [x] **Composite GitHub Action** at repo root (`action.yml`) — `uses:
       shubham10divakar/xmd@v1`. Inputs: `verify` (render globs; default = all
@@ -301,13 +306,61 @@ escaping / anchors and be wrong in hard-to-debug ways.
 
 ---
 
-## Effort summary
+## Pending
 
-| Tier | Items | Estimate |
+Everything the 10-item review asked for is shipped. What's left:
+
+### Paper-writing inputs (no code)
+- [ ] **State Properties 1–2 over the `--pure` subset** precisely in the paper
+      (A6). The mechanism exists; the prose doesn't.
+- [ ] **Cold-vs-warm `--cache` number** for the overhead section (B5). Measure
+      on a doc with a genuinely slow step; `duration_ms` is already recorded.
+      Suggest a tiny `bench/` doc committed alongside.
+- [ ] **Property 2 wording** — "order-independent *for the default
+      configuration*", with `session:` as the documented opt-out (B3). SPEC
+      §6.2 already frames it; mirror into the paper.
+
+### Adoption — human-time
+- [ ] **Convert a real third-party README to `.xmd` and open a PR.** Highest
+      leverage for both tool and paper. Pick a project with many code blocks +
+      a docs-caring maintainer. Merged → adoption story; declined → the review
+      tells you what blocks adoption; either way the conversion surfaces stale
+      outputs → Case Study 3.
+- [ ] **VS Code extension** — run the step under the cursor. Stretch; small
+      but a separate package to build/test/publish.
+- [ ] Tag/point the Action at `v1.0.3` in the README example once a GitHub
+      **Release** is cut (`gh release create v1.0.3 --generate-notes`).
+- [ ] PyPI publish of `1.0.3` (per `RELEASING.md`) — `python -m build` →
+      `twine upload`. Not done.
+
+### Deferred by choice
+- [ ] **Strip wall-clock durations** in normalization (A4) — too broad a rule
+      to apply safely without a concrete failing case. Revisit if one appears.
+- [ ] **`readme_showcase_render.md` regen** (A4) — needs a box with all 10
+      interpreters (this machine lacks `node`, `ruby`, `go`, `r`, `php`,
+      `ts-node`). Until then it has no provenance header; `verify` returns
+      exit 2 and CI's `self-check` skips it (documented in `ci.yml`).
+
+### Out of JOT scope but noted
+- [ ] `agent.py` write-back still routes through `to_source` (reformats the
+      whole doc) — `TODO-v1.0.3.md` P2. The byte-preserving splice helpers from
+      `@context_memory` are the fix.
+- [ ] `agent --autonomous` LLM-generated steps aren't tagged non-deterministic
+      (separate path from the `@http`/`@llm` plugin marking in A6).
+- [ ] `TODO-v1.0.3.md` P0 items not touched here: `run --dry-run`, `--allow`
+      plugin allowlist. (README threat-model section already exists.)
+
+---
+
+## Effort summary (as delivered)
+
+| Tier | Items | Commits |
 |---|---|---|
-| A | A1, A2 (+exit codes), A4, A6 | ~4–5 days |
-| B | B3, B5, B10 | ~3–4 days (B3 dominates) |
-| C | C8, C7, C9 (+ Action) | ~1 day code + ongoing |
+| A | A1, A2, A4, A6 | `c2fc89f` `2bb3119` `93252ee` `018e0f1` |
+| B | B3, B5, B10 | `e1922cb` `f0b9784` `5b1ef19` |
+| C | C8, C7, C9 | `3e27657` `ff315c6` `c10f9b2` |
+| merge | `jot-tier-a` → `main` | `f055016` (tag `v1.0.3`) |
 
-Start with A1 (provenance + `verify`) — self-contained, and every other Tier A
-item references its header format.
+76 → 160 tests. New modules: `provenance.py`, `normalize.py`, `cache.py`,
+`lint.py`. New docs: `GRAMMAR.md`, `JOT-REVIEW-PLAN.md`. New infra: `action.yml`,
+`.github/workflows/ci.yml`, `.pre-commit-hooks.yaml`.

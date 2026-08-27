@@ -600,6 +600,34 @@ still matches, **3** if the source has changed since the render was generated
 (STALE), **2** if there's no header. Wire it into a pre-commit hook or CI so a
 stale render can't be trusted by accident.
 
+### Use in CI
+
+**Raw commands** — in any workflow step:
+
+```bash
+pip install runxmd
+runxmd verify docs/report_render.md         # 0 fresh · 3 stale · 2 no header
+runxmd run docs/report.md --check           # rebuild in memory, diff, exit 1 on drift
+runxmd run docs/report.md --strict          # exit non-zero if any step fails
+```
+
+**GitHub Action** — this repo ships a composite action:
+
+```yaml
+# .github/workflows/docs.yml
+jobs:
+  renders-are-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shubham10divakar/xmd@v1          # runxmd verify
+        with:
+          # verify: "docs/*_render.md"         # default: all tracked *_render.* / *_results.* / *_output.*
+          check: "docs/report.md README.md"    # also `runxmd run --check` these sources
+```
+
+A stale render fails the job with a `::error::` annotation.
+
 ---
 
 ## Design principles

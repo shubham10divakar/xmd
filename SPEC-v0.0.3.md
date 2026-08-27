@@ -100,10 +100,10 @@ runxmd run <file> [--workflow NAME] [--write-back] [--no-save] \
 runxmd watch <file> [--interval S] [--max-runs N] [--write-back] [--no-save] \
                     [--strict] [--pure] [--raw] [--no-provenance]
 runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
-runxmd verify <render> [--source FILE]
+runxmd verify <render> [<render> …] [--source FILE]
 runxmd check
 runxmd parse <file>
-runxmd validate <file>
+runxmd validate <file> [<file> …]
 runxmd --version
 ```
 

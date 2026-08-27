@@ -93,12 +93,14 @@ def main(argv=None) -> int:
     pp.add_argument("file")
 
     pv = sub.add_parser("validate", help="check the file parses; list sections")
-    pv.add_argument("file")
+    pv.add_argument("file", nargs="+")
 
     pvf = sub.add_parser("verify", help="check a render still matches its source")
-    pvf.add_argument("file", help="the _render / _results / _output file to check")
+    pvf.add_argument("file", nargs="+",
+                     help="the _render / _results / _output file(s) to check")
     pvf.add_argument("--source",
-                     help="source document (default: read from the render's provenance header)")
+                     help="source document (default: read from each render's provenance "
+                          "header; only valid with a single file)")
 
     args = p.parse_args(argv)
 
@@ -166,12 +168,19 @@ def main(argv=None) -> int:
     elif args.cmd == "parse":
         print(json.dumps(asdict(_load(args.file)), indent=2))
     elif args.cmd == "validate":
-        return _validate(args.file)
+        return max((_validate(f) for f in args.file), default=0)
     elif args.cmd == "verify":
         from . import provenance
-        code, msg = provenance.verify(args.file, args.source)
-        print(msg)
-        return code
+        files = args.file
+        if args.source and len(files) != 1:
+            print("✗ --source is only valid with a single file")
+            return 2
+        worst = 0
+        for fpath in files:
+            code, msg = provenance.verify(fpath, args.source)
+            print(msg)
+            worst = max(worst, code)
+        return worst
     else:
         p.print_help()
     return 0

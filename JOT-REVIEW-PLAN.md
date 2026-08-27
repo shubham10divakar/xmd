@@ -9,12 +9,12 @@ implementation difficulty.
 
 Last updated: 2026-08-27
 
-**Progress:** Tier A ✅ (A1 A2 A4 A6) · Tier B ✅ (B3 B5 B10) · C8 ✅ — all on
-branch `jot-tier-a`, **141 tests green**. Not started: C7 (grammar decision),
-C9 (GitHub Action / VS Code ext / third-party PR). Remaining open sub-items are
-non-blocking follow-ups noted under each finished section (pre-commit/Action
-wiring, `readme_showcase` regen on a full-interpreter box, `agent --autonomous`
-tagging, cold-vs-warm cache timing number).
+**Progress:** Tier A ✅ (A1 A2 A4 A6) · Tier B ✅ (B3 B5 B10) · C7 ✅ · C8 ✅ ·
+C9 🔧 (Action + CI + pre-commit shipped; VS Code ext + third-party PR are
+human-time and open) — all on branch `jot-tier-a`, **160 tests green**.
+Remaining non-blocking follow-ups: `readme_showcase` regen on a
+full-interpreter box, `agent --autonomous` non-determinism tagging,
+cold-vs-warm cache timing number for the paper, the third-party conversion PR.
 
 ---
 
@@ -276,15 +276,28 @@ escaping / anchors and be wrong in hard-to-debug ways.
       scalars, block-scalar terminates on next step, dotted memory keys stay
       flat. `tests/test_lint.py` (13). Full suite 160 green.
 
-### ⬜ C9. Adoption path
+### 🔧 C9. Adoption path
 
-- [ ] GitHub Action wrapping `runxmd verify` + `run --check` on every push.
-- [ ] VS Code extension: run the step under the cursor. (Stretch.)
-- [ ] Convert a real third-party project's README to `.xmd` and open a PR. Pick
-      one with many code blocks + a maintainer who cares about docs. Either
-      merged (adoption story) or the review tells you what blocks adoption.
-      Conversion surfaces stale outputs in their docs → publishable finding
-      (Case Study 3).
+- [x] **Composite GitHub Action** at repo root (`action.yml`) — `uses:
+      shubham10divakar/xmd@v1`. Inputs: `verify` (render globs; default = all
+      tracked `*_render.* / *_results.* / *_output.*`), `check` (source files to
+      `runxmd run --check`), `allow-missing`, `version`, `python-version`.
+      Stale render (exit 3) fails with a `::error::` annotation; missing header
+      (exit 2) fails unless `allow-missing: true`.
+- [x] **Repo CI** (`.github/workflows/ci.yml`) — pytest matrix on Python
+      3.9/3.11/3.13/3.14 + a `self-check` job that `runxmd verify`s the
+      committed renders (exit 3 fails, exit 2 = "no header yet" skips) and
+      `runxmd validate`s every example doc.
+- [x] **pre-commit plugin** (`.pre-commit-hooks.yaml`) — `runxmd-verify` and
+      `runxmd-validate` hooks. Needed `verify` / `validate` to accept multiple
+      file args (pre-commit passes a batch) — done.
+- [x] README "Use in CI" section (raw commands + the Action).
+- [x] Fixed stale `MANIFEST.in` (missing SPEC-v0.0.3, GRAMMAR, ROADMAP,
+      `examples/*.md`).
+- [ ] VS Code extension: run the step under the cursor. (Stretch — not started.)
+- [ ] Convert a real third-party project's README to `.xmd` and open a PR.
+      External / human-time; the single highest-leverage adoption move. Surfaces
+      stale outputs in their docs → Case Study 3 material.
 
 ---
 

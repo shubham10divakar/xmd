@@ -18,8 +18,10 @@ single-sourced from `runxmd/__init__.py` (`__version__`).
 
 ## Each release
 
-1. **Bump the version** in `runxmd/__init__.py` (e.g. `0.0.3` → `0.0.4`).
-2. **Update the SPEC + changelog** (cut `SPEC-vX.Y.Z.md`, update the README badge).
+1. **Bump the version** in `runxmd/__init__.py` (e.g. `1.0.3` → `1.0.4`).
+2. **Update the docs + changelog** — README badge + Status header, the SPEC
+   changelog (§8), `ROADMAP.md`. Cut a new `SPEC-vX.Y.Z.md` only when the
+   contract actually changes.
 3. **Build** a clean sdist + wheel:
    ```bash
    # from the repo root
@@ -30,25 +32,25 @@ single-sourced from `runxmd/__init__.py` (`__version__`).
    ```bash
    twine check dist/*
    ```
-5. **Test-publish first** (recommended), then install from TestPyPI to confirm:
+5. **Smoke-test the built wheel** in a throwaway venv:
+   ```bash
+   python -m venv /tmp/rx && /tmp/rx/bin/pip install dist/runxmd-*.whl
+   /tmp/rx/bin/runxmd --version
+   printf '# S\n\n- @print\n  text: "hi"\n' > /tmp/s.md
+   /tmp/rx/bin/runxmd run /tmp/s.md && /tmp/rx/bin/runxmd verify /tmp/s_render.md
+   ```
+6. **Test-publish first** (recommended), then install from TestPyPI to confirm:
    ```bash
    twine upload --repository testpypi dist/*
    pip install --index-url https://test.pypi.org/simple/ --no-deps runxmd
    ```
-6. **Publish for real:**
+7. **Publish for real:**
    ```bash
    twine upload dist/*
    ```
-7. **Tag the release** and push the tag:
+8. **Tag the release** and push the tag, then cut the GitHub Release:
    ```bash
-   git tag v0.0.2
-   git push origin v0.0.2
+   git tag -a v1.0.4 -m "runxmd v1.0.4 — <one-line summary>"
+   git push origin v1.0.4
+   gh release create v1.0.4 --generate-notes
    ```
-
-## Smoke test before publishing
-
-```bash
-pip install -e .
-runxmd --version
-runxmd run examples/PROJECT.xmd --no-write
-```

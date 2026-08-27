@@ -557,8 +557,27 @@ runxmd --version
 | `--check` | `run` | Don't write; compare a fresh render against the committed one and exit non-zero on drift (a doctest for the whole document) |
 | `--pure` | `run`, `watch` | Refuse non-deterministic steps (`@http`, `@llm`); exit 2 if any are present |
 | `--cache` | `run`, `watch` | Reuse a cached result for a language step whose plugin, params, interpreter version and script bytes are unchanged (`--force` to ignore existing entries) |
+| `--timeout SECONDS` | `run`, `watch` | Default per-step timeout; a step's own `timeout:` param wins |
+| `--json` | `run` | Print a JSON execution trace to stdout (suppresses normal output) |
 | `--raw` | `run`, `watch` | Don't normalize step output (keep absolute paths, `\`, `$HOME`, hostname verbatim) |
 | `--no-provenance` | `run`, `watch` | Omit the `runxmd-provenance` header from output files |
+
+### Step params: `timeout:`, `stdin:`, `if:`
+
+Any code step also takes:
+
+```markdown
+- @python
+  timeout: 10               # kill after 10s (exit 124)
+  stdin: "input fed to the script"
+  if: memory.enabled        # skip the step unless the guard holds
+  run: |
+    import sys; print(sys.stdin.read())
+```
+
+`if:` guards: `memory.<key>` (truthy), `not memory.<key>`,
+`memory.<key> == "x"` (also `!= > < >= <=`), `context` (rolling summary set).
+A skipped step counts as ok and renders nothing.
 
 ### `runxmd verify` — is this render still current?
 

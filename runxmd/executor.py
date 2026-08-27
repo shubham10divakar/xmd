@@ -71,6 +71,7 @@ class RunReport:
     pure_refused: list = _field(default_factory=list)   # plugin names refused by --pure
     cache_hits: int = 0
     cache_misses: int = 0
+    records: dict = _field(default_factory=dict)        # {workflow: [step records]}
 
 _SET_RE = re.compile(r"^set:\s*memory\.([a-zA-Z0-9_.]+)\s*=\s*(.+)$")
 _WRITE_RE = re.compile(r"^write(?:\(([^)]+)\))?$")
@@ -97,6 +98,7 @@ def run(
     pure: bool = False,
     cache: bool = False,
     force: bool = False,
+    timeout: float = None,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
@@ -110,7 +112,7 @@ def run(
     memory = dict(mem_sec.memory) if mem_sec else {}
     ctx = {"memory": memory, "source_path": os.path.abspath(path),
            "normalize": normalize, "pure": pure,
-           "cache": cache, "force": force}
+           "cache": cache, "force": force, "timeout": timeout}
 
     ctx_sec = doc.section("context_memory")
     if ctx_sec is not None:
@@ -142,6 +144,8 @@ def run(
             if r.get("code") == 2 and r["error"].startswith("refused:")
         ]
 
+    report.records = wf_results
+
     if cache:
         stats = ctx.get("_cache_stats", {"hits": 0, "misses": 0})
         report.cache_hits, report.cache_misses = stats["hits"], stats["misses"]
@@ -169,7 +173,7 @@ def run(
     # Default: render mode — prose preserved, steps replaced with results.
     if not output_written and wf_results:
         _any = any(
-            (r["output"] if r["ok"] else r["error"]).strip()
+            _result_text(r)
             for recs in wf_results.values() for r in recs
         )
         if _any:
@@ -227,6 +231,7 @@ def watch(
     pure: bool = False,
     cache: bool = False,
     force: bool = False,
+    timeout: float = None,
     out=print,
 ) -> None:
     """Re-run the document whenever it changes on disk."""
@@ -246,7 +251,7 @@ def watch(
                 run(path, workflow_name=workflow_name, write_back=write_back,
                     save_context=save_context, add_provenance=add_provenance,
                     normalize=normalize, pure=pure, cache=cache, force=force,
-                    out=out)
+                    timeout=timeout, out=out)
                 runs += 1
                 try:
                     last = os.path.getmtime(path)
@@ -270,29 +275,35 @@ def run_steps(steps, memory, ctx, out) -> tuple:
     """Run a list of steps top-to-bottom; returns (all_ok, records)."""
     records = []
     for idx, step in enumerate(steps, 1):
-        ok, output, error, dur, code = _run_step(idx, step, memory, ctx, out)
+        ok, output, error, dur, code, skipped = _run_step(idx, step, memory, ctx, out)
         records.append({"idx": idx, "plugin": step.plugin,
                         "output": output, "error": error, "ok": ok,
-                        "duration_ms": dur, "code": code})
+                        "duration_ms": dur, "code": code, "skipped": skipped})
     return all(r["ok"] for r in records), records
 
 
 def _run_step(idx, step, memory, ctx, out) -> tuple:
-    """Run one step; returns (ok, stdout, stderr, duration_ms, exit_code)."""
+    """Run one step; returns (ok, stdout, stderr, duration_ms, exit_code, skipped)."""
     plugin = plugins.get(step.plugin)
     label = f"  step {idx} @{step.plugin}"
     if plugin is None:
         out(f"{label} ✗ unknown plugin")
-        return False, "", f"unknown plugin: @{step.plugin}", 0, 127
+        return False, "", f"unknown plugin: @{step.plugin}", 0, 127, False
+
+    cond = step.params.get("if")
+    if cond not in (None, "") and not _eval_if(str(cond), memory, ctx):
+        out(f"{label} · skipped (if: {cond})")
+        return True, "", "", 0, 0, True
+
     if ctx.get("pure") and not plugins.is_deterministic(step.plugin):
         out(f"{label} ✗ refused (--pure): @{step.plugin} is non-deterministic")
         return (False, "",
                 f"refused: @{step.plugin} is non-deterministic and --pure is set",
-                0, 2)
+                0, 2, False)
     ctx_summary = (ctx.get("context_memory") or {}).get("summary", "")
     params = {k: _subst_context(substitute(v, memory), ctx_summary)
               for k, v in step.params.items()
-              if k not in ("result", "redact", "session")}
+              if k not in ("result", "redact", "session", "if")}
 
     # session: <name> — steps sharing a name run with every earlier session
     # step's code prepended, so a variable defined in one is visible in the
@@ -315,7 +326,7 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
                 stats["hits"] += 1
                 out(f"{label} ✓ (cached)")
                 _emit(hit["output"] if hit["ok"] else hit["error"], out)
-                return hit["ok"], hit["output"], hit["error"], 0, hit["code"]
+                return hit["ok"], hit["output"], hit["error"], 0, hit["code"], False
         stats["misses"] += 1
 
     sess = ctx.setdefault("_sessions", _Sessions()) if session else None
@@ -355,7 +366,63 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
     else:
         out(f"{label} ✗ (exit {result.code})")
         _emit(result.error or result.output, out)
-    return result.ok, result.output or "", result.error or "", dur, result.code
+    return result.ok, result.output or "", result.error or "", dur, result.code, False
+
+
+def _result_text(r: dict) -> str:
+    """Text to show for a step in render/results output.
+
+    On success: stdout. On failure: stdout AND stderr (labelled by order) so a
+    step that printed partial output before dying doesn't hide it."""
+    if r.get("skipped"):
+        return ""
+    if r["ok"]:
+        return (r["output"] or "").strip()
+    parts = [s.strip() for s in (r.get("output") or "", r.get("error") or "") if s.strip()]
+    return "\n".join(parts).strip()
+
+
+_IF_CMP = re.compile(r"^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$")
+
+
+def _if_lookup(ref: str, memory: dict, ctx: dict):
+    ref = ref.strip()
+    if ref.startswith("memory."):
+        return memory.get(ref[7:])
+    if ref in ("context", "context_memory"):
+        return (ctx.get("context_memory") or {}).get("summary", "")
+    return parse_scalar(ref)
+
+
+def _eval_if(expr: str, memory: dict, ctx: dict) -> bool:
+    """Evaluate a step ``if:`` guard. Supported forms:
+
+        if: memory.flag                 # truthy
+        if: not memory.flag             # falsy
+        if: memory.count >= 3           # ==  !=  >  <  >=  <=  vs a scalar
+        if: memory.mode == "fast"
+        if: context                     # rolling summary is non-empty
+    """
+    expr = expr.strip()
+    neg = False
+    if expr[:4].lower() == "not ":
+        neg, expr = True, expr[4:].strip()
+    m = _IF_CMP.match(expr)
+    if m:
+        lhs = _if_lookup(m.group(1), memory, ctx)
+        rhs = parse_scalar(m.group(3).strip())
+        op = m.group(2)
+        try:
+            res = {
+                "==": lhs == rhs, "!=": lhs != rhs,
+                ">": lhs > rhs, "<": lhs < rhs,
+                ">=": lhs >= rhs, "<=": lhs <= rhs,
+            }[op]
+        except TypeError:
+            res = False
+    else:
+        res = bool(_if_lookup(expr, memory, ctx))
+    return (not res) if neg else bool(res)
 
 
 def _subst_context(value, summary: str):
@@ -467,7 +534,7 @@ def _render_source(source: str, wf_results: dict) -> str:
             # Emit result in place of the step block
             if step_idx < len(all_results):
                 r = all_results[step_idx]
-                text = (r["output"] if r["ok"] else r["error"]).strip()
+                text = _result_text(r)
                 if text:
                     if not plugins.is_deterministic(r["plugin"]):
                         out_lines.append(
@@ -563,7 +630,7 @@ def _write_results_doc(wf_results: dict, out_path: str, out,
     blocks = []
     for records in wf_results.values():
         for r in records:
-            text = (r["output"] if r["ok"] else r["error"]).strip()
+            text = _result_text(r)
             if text:
                 blocks.append(text)
     content = "\n\n".join(blocks) + "\n"
@@ -718,13 +785,14 @@ def _build_context_records(run_id: str, wf_results: dict,
             text = " ".join(text.split())
             if len(text) > cap:
                 text = text[:cap - 1] + "…"
+            status = "skip" if r.get("skipped") else ("ok" if r["ok"] else "err")
             records.append({
                 "time": now,
                 "run": run_id,
                 "workflow": wf_name or None,
                 "step": r["idx"],
                 "plugin": r["plugin"],
-                "status": "ok" if r["ok"] else "err",
+                "status": status,
                 "duration_ms": r.get("duration_ms"),
                 "output": text,
             })

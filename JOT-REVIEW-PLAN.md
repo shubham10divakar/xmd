@@ -9,11 +9,12 @@ implementation difficulty.
 
 Last updated: 2026-08-27
 
-**Progress:** Tier A ✅ complete (A1 A2 A4 A6) on branch `jot-tier-a`, 117 tests
-green. Tier B + Tier C not started. Remaining open sub-items are the non-blocking
-follow-ups noted under each finished section (pre-commit/Action wiring,
-`readme_showcase` regen on a full-interpreter box, `agent --autonomous`
-tagging).
+**Progress:** Tier A ✅ (A1 A2 A4 A6) · Tier B ✅ (B3 B5 B10) · C8 ✅ — all on
+branch `jot-tier-a`, **141 tests green**. Not started: C7 (grammar decision),
+C9 (GitHub Action / VS Code ext / third-party PR). Remaining open sub-items are
+non-blocking follow-ups noted under each finished section (pre-commit/Action
+wiring, `readme_showcase` regen on a full-interpreter box, `agent --autonomous`
+tagging, cold-vs-warm cache timing number).
 
 ---
 
@@ -208,16 +209,26 @@ section a number.
 - [ ] Cold-vs-warm timing number for the paper's overhead section — measure on
       a doc with a genuinely slow step (`duration_ms` is already recorded).
 
-### ⬜ B10. Remaining smaller items
+### ✅ B10. Remaining smaller items
 
-- [ ] Per-step `timeout:` param (default ~30s) on `subprocess.run` in
-      `lang.py` / `shell.py` — closes the "runaway loop hangs the run" hole.
-- [ ] `stdin:` step param.
-- [ ] Keep `stderr` as its own field end-to-end (render shows it separately).
-- [ ] `--json` trace output — dump the `records` list via one `json.dumps` in
-      `cli.py`.
-- [ ] Step-level `if:` on memory / context values — evaluate in `_run_step`
-      before dispatch; record skipped steps as `skipped`.
+- [x] Per-step `timeout:` param on `subprocess.run` in `lang.py` / `shell.py`
+      (inline + `*_script` + `@shell`); exit 124, `... timed out after Ns`.
+      Opt-in (not a forced default — would break legit long steps);
+      `run --timeout N` / `watch --timeout N` sets a global default, per-step
+      `timeout:` overrides.
+- [x] `stdin:` step param → `subprocess.run(input=...)` for all code plugins.
+- [x] `stderr` kept separate end-to-end: step records already carry `output` /
+      `error`; new `_result_text()` makes render & results show **both**
+      stdout and stderr for a failed step (previously stdout was dropped).
+- [x] `run --json` — prints `{file, runxmd_version, workflows: {name:
+      [records]}, all_ok, failed_steps, cache}` and suppresses normal output.
+      `RunReport.records` exposes the trace.
+- [x] Step-level `if:` guard — `memory.<key>` truthy, `not memory.<key>`,
+      `memory.<key> <op> <scalar>` (`== != > < >= <=`), `context`. Evaluated
+      in `_run_step` before dispatch; skipped steps get `skipped: True`
+      (count as ok, render nothing), and `@context_memory` logs `status: skip`.
+- [x] `tests/test_smaller.py` — 11 tests. Full suite 141 green.
+- [x] SPEC §6.4 / §6.5 + README ("Step params" + Commands table).
 
 ---
 

@@ -26,6 +26,26 @@ import tempfile
 
 from .base import Result, register
 
+
+def _timeout(params: dict, ctx: dict):
+    """Per-step ``timeout:`` seconds, else the run-wide default, else None."""
+    raw = params.get("timeout")
+    if raw in (None, ""):
+        raw = ctx.get("timeout")
+    try:
+        t = float(raw)
+        return t if t > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _stdin(params: dict):
+    v = params.get("stdin")
+    if v in (None, ""):
+        return None
+    return v if isinstance(v, str) else str(v)
+
+
 # ── PowerShell: Windows uses 'powershell' + ExecutionPolicy bypass;
 #               Linux/macOS use 'pwsh' (PowerShell Core), no policy flag needed.
 _IS_WINDOWS = platform.system() == "Windows"
@@ -68,12 +88,15 @@ def _make_inline_runner(name: str, cmd: list, ext: str):
         # (e.g. pathlib.Path("scripts/foo.py")) resolve from there, not from
         # wherever the user invoked runxmd.
         source_dir = os.path.dirname(ctx.get("source_path", "") or "") or None
+        timeout = _timeout(params, ctx)
+        stdin = _stdin(params)
         fd, path = tempfile.mkstemp(suffix=_ext)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(code if isinstance(code, str) else str(code))
             proc = subprocess.run(
                 _cmd + [path], capture_output=True, text=True, cwd=source_dir,
+                input=stdin, timeout=timeout,
             )
             return Result(
                 ok=proc.returncode == 0,
@@ -81,6 +104,9 @@ def _make_inline_runner(name: str, cmd: list, ext: str):
                 error=proc.stderr,
                 code=proc.returncode,
             )
+        except subprocess.TimeoutExpired:
+            return Result(ok=False, error=f"@{_name} step timed out after {timeout}s",
+                          code=124)
         finally:
             try:
                 os.unlink(path)
@@ -146,10 +172,16 @@ def _make_script_runner(name: str, cmd: list):
         # Run in the MD file's directory so relative paths inside the script
         # resolve from there, not from the shell's CWD.
         run_dir = os.path.dirname(ctx.get("source_path", "") or "") or None
-        proc = subprocess.run(
-            _cmd + [script_path] + args,
-            capture_output=True, text=True, cwd=run_dir,
-        )
+        timeout = _timeout(params, ctx)
+        try:
+            proc = subprocess.run(
+                _cmd + [script_path] + args,
+                capture_output=True, text=True, cwd=run_dir,
+                input=_stdin(params), timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return Result(ok=False, error=f"@{_name} step timed out after {timeout}s",
+                          code=124)
         return Result(
             ok=proc.returncode == 0,
             output=proc.stdout,

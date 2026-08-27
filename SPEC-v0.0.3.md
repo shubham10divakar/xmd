@@ -173,6 +173,30 @@ pure function of the key. `@shell`, `@read`, `@write`, `@http`, `@llm`, and
 `session:` steps are never cached. Failed runs and "interpreter not found"
 (exit 127) are not stored.
 
+### 6.4 Step params: `timeout:`, `stdin:`, `if:` (v1.0.3)
+
+Any code step (`@python` … `@powershell`, `*_script`, `@shell`) accepts:
+
+- **`timeout: <seconds>`** — kill the step after N seconds (exit code 124,
+  `... timed out after Ns`). `run --timeout N` sets a default for every step; a
+  step's own `timeout:` wins. No timeout by default.
+- **`stdin: <text>`** — feed `<text>` to the step's standard input.
+- **`if: <guard>`** — run the step only if the guard holds, else mark it
+  `skipped` (counts as ok; nothing rendered). Guards:
+  `memory.<key>` (truthy), `not memory.<key>`, `memory.<key> <op> <scalar>`
+  (`== != > < >= <=`), and `context` (rolling summary non-empty).
+
+`stdout` and `stderr` are captured separately end-to-end; the `write`
+projection records `status:` / `exit_code:` / `stderr:` per step, and
+render / results show stdout **and** stderr for a failed step.
+
+### 6.5 `--json` trace
+
+`runxmd run --json` suppresses the normal output and prints one JSON object:
+`{file, runxmd_version, workflows: {name: [step records]}, all_ok,
+failed_steps, cache}`. Each step record is
+`{idx, plugin, output, error, ok, duration_ms, code, skipped}`.
+
 ---
 
 ## 7. Out of scope (still deferred)

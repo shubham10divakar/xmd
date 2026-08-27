@@ -51,6 +51,10 @@ def main(argv=None) -> int:
                          "params, interpreter version and script bytes are unchanged")
     pr.add_argument("--force", action="store_true",
                     help="with --cache: ignore existing cache entries (still refresh them)")
+    pr.add_argument("--timeout", type=float, metavar="SECONDS",
+                    help="default per-step timeout; a step's own timeout: param wins")
+    pr.add_argument("--json", action="store_true",
+                    help="print a JSON execution trace to stdout (suppresses normal output)")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
@@ -71,6 +75,8 @@ def main(argv=None) -> int:
                     help="reuse cached results for unchanged language steps")
     pw.add_argument("--force", action="store_true",
                     help="with --cache: ignore existing cache entries")
+    pw.add_argument("--timeout", type=float, metavar="SECONDS",
+                    help="default per-step timeout; a step's own timeout: param wins")
 
     pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
     pa.add_argument("file")
@@ -105,8 +111,20 @@ def main(argv=None) -> int:
                            save_context=not args.no_save,
                            add_provenance=not args.no_provenance,
                            check=args.check, normalize=not args.raw,
-                           pure=args.pure, cache=args.cache, force=args.force)
+                           pure=args.pure, cache=args.cache, force=args.force,
+                           timeout=args.timeout,
+                           out=(lambda *a: None) if args.json else print)
         report = getattr(doc, "report", None)
+        if args.json:
+            print(json.dumps({
+                "file": args.file,
+                "runxmd_version": __version__,
+                "workflows": getattr(report, "records", {}),
+                "all_ok": getattr(report, "all_ok", True),
+                "failed_steps": getattr(report, "failed_steps", []),
+                "cache": {"hits": getattr(report, "cache_hits", 0),
+                          "misses": getattr(report, "cache_misses", 0)},
+            }, indent=2, default=str))
         if report is not None:
             if report.check_failed:
                 return 1
@@ -132,6 +150,7 @@ def main(argv=None) -> int:
             pure=args.pure,
             cache=args.cache,
             force=args.force,
+            timeout=args.timeout,
             out=flush,
         )
     elif args.cmd == "agent":

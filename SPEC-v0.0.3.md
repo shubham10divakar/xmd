@@ -95,13 +95,41 @@ file.
 ## 6. CLI (full)
 
 ```bash
-runxmd run <file> [--workflow NAME] [--no-write]
-runxmd watch <file> [--interval S] [--max-runs N] [--no-write]
+runxmd run <file> [--workflow NAME] [--write-back] [--no-save] \
+                  [--strict] [--check] [--pure] [--raw] [--no-provenance]
+runxmd watch <file> [--interval S] [--max-runs N] [--write-back] [--no-save] \
+                    [--strict] [--pure] [--raw] [--no-provenance]
 runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
+runxmd verify <render> [--source FILE]
+runxmd check
 runxmd parse <file>
 runxmd validate <file>
 runxmd --version
 ```
+
+Source files are read-only by default; `--write-back` is opt-in and only ever
+touches `runtime.*` memory. `--no-save` suppresses the `@context_memory`
+append.
+
+### 6.1 Trust layer (v1.0.3)
+
+- **Provenance.** Every render / results / output file is prefixed with an HTML
+  comment recording `source_sha256` (SHA-256 of the source, normalized:
+  BOM-stripped, CRLF→LF, per-line rstrip, single trailing newline),
+  `runxmd_version`, `generated_utc`, `platform`, the `interpreters` that ran,
+  and `non_deterministic_steps`. `--no-provenance` omits it.
+- **`runxmd verify <render>`** — re-hashes the source named in the header;
+  exit 0 = matches, 3 = STALE, 2 = no header / source not found.
+- **`--strict`** — a failed step propagates a non-zero exit code.
+- **`--check`** — build a fresh render in memory, compare (header-stripped)
+  against the committed one, exit 1 on drift; nothing is written.
+- **Normalization** (default on, `--raw` off) — step output has paths under the
+  document directory made relative, `$HOME`→`~`, hostname→`HOST`, and `\`→`/`
+  inside path-like tokens. A step's `redact:` param (one literal or `/regex/`
+  per line) blanks volatile substrings.
+- **`--pure`** — refuse to execute non-deterministic plugins (`@http`, `@llm`);
+  exit 2 if any are present. Plugins declare this via
+  `register(name, deterministic=False)`.
 
 ---
 
@@ -117,6 +145,13 @@ runxmd --version
 
 ## 8. Changelog
 
+> Spec-document numbering (`v0.0.x`) is independent of the package version
+> (`1.0.x`). This document, `SPEC-v0.0.3.md`, is current as of package
+> **v1.0.3**.
+
+- **package v1.0.3** — trust layer (§6.1): provenance headers + `runxmd
+  verify`; `run --strict` / `--check`; output normalization + `redact:`;
+  `run --pure` + `deterministic=False` plugin flag.
 - **v0.0.3** — agent engine (`runxmd agent`: plan → execute → update, agent-author
   mode); `@llm` plugin; reusable `run_workflow` / `run_steps` executor helpers.
 - **v0.0.2** — `@http`, `@write`, `@read`; `runxmd watch`; field ownership (§4.1).

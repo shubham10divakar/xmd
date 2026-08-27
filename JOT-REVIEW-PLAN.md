@@ -203,14 +203,22 @@ section a number.
 
 ## Tier C — adoption + hygiene (runs in parallel with writing)
 
-### ⬜ C8. Version hygiene — DO FIRST (~1 hr)
+### ✅ C8. Version hygiene + doc sync
 
-- [ ] Pick a version story: `1.0.3-dev`. Sync `runxmd/__init__.py`, README
-      badge, `Development Status :: 4 - Beta`.
-- [ ] Add `Programming Language :: Python :: 3.14` to classifiers.
-- [ ] Rename spec to track the package version, or add a mapping note.
-- [ ] Fix the `--no-write` line in `SPEC-v0.0.3.md:97` → `--write-back` /
+- [x] `__version__` → `1.0.3`; README status badge → `v1.0.3`; Status section
+      header → `v1.0.3`; `Development Status :: 4 - Beta`.
+- [x] Added `Programming Language :: Python :: 3.14` to classifiers.
+- [x] Spec/package version mapping note added to `SPEC-v0.0.3.md` §8 and the
+      README Status section (spec keeps `v0.0.x`, current doc is v0.0.3 @ pkg
+      v1.0.3).
+- [x] Fixed the `--no-write` line in `SPEC-v0.0.3.md` → `--write-back` /
       `--no-save`.
+- [x] Documented the whole trust layer: `verify` subcommand + `--strict` /
+      `--check` / `--pure` / `--raw` / `--no-provenance` in both README
+      (Commands table + a `runxmd verify` section) and `SPEC-v0.0.3.md` §6.1.
+- [x] ROADMAP "Where it is now" → v1.0.3 with a trust-layer paragraph.
+- [x] Regenerated `file_checks_test_render.md` so its header reads
+      `runxmd_version: 1.0.3`; `verify` passes.
 
 ### ⬜ C7. Decide what the grammar actually is
 

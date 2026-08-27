@@ -7,7 +7,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/runxmd)](https://pypi.org/project/runxmd/)
 [![Downloads](https://static.pepy.tech/badge/runxmd)](https://pepy.tech/project/runxmd)
-[![status](https://img.shields.io/badge/status-v1.0.2-blue)](./SPEC-v0.0.3.md)
+[![status](https://img.shields.io/badge/status-v1.0.3-blue)](./SPEC-v0.0.3.md)
 [![deps](https://img.shields.io/badge/dependencies-zero-brightgreen)](#)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.9-blue)](#)
 
@@ -516,9 +516,10 @@ Planning requires `ANTHROPIC_API_KEY`. See [`examples/AGENT.xmd`](./examples/AGE
 ## Commands
 
 ```bash
-runxmd run <file> [--workflow NAME] [--write-back]
-runxmd watch <file> [--interval S] [--max-runs N] [--write-back]
+runxmd run <file> [--workflow NAME] [--write-back] [--strict] [--check] [--pure] [--raw] [--no-provenance]
+runxmd watch <file> [--interval S] [--max-runs N] [--write-back] [--strict] [--pure] [--raw]
 runxmd agent <file> [--replan] [--autonomous] [--model M] [--max-tokens N] [--dry-run]
+runxmd verify <render> [--source FILE]
 runxmd check
 runxmd parse <file>
 runxmd validate <file>
@@ -527,9 +528,34 @@ runxmd --version
 
 | Flag | Applies to | Effect |
 |---|---|---|
-| `--write-back` | `run`, `watch` | Persist `runtime.*` memory back into the source file |
 | `--workflow NAME` | `run`, `watch` | Run only the named workflow |
-| `--write-back` omitted | default | Source file is never modified |
+| `--write-back` | `run`, `watch` | Persist `runtime.*` memory back into the source file (default: off, source untouched) |
+| `--strict` | `run`, `watch` | Exit non-zero if any step fails — use as a CI gate |
+| `--check` | `run` | Don't write; compare a fresh render against the committed one and exit non-zero on drift (a doctest for the whole document) |
+| `--pure` | `run`, `watch` | Refuse non-deterministic steps (`@http`, `@llm`); exit 2 if any are present |
+| `--raw` | `run`, `watch` | Don't normalize step output (keep absolute paths, `\`, `$HOME`, hostname verbatim) |
+| `--no-provenance` | `run`, `watch` | Omit the `runxmd-provenance` header from output files |
+
+### `runxmd verify` — is this render still current?
+
+Every render / results / output file carries an invisible provenance header:
+
+```
+<!-- runxmd-provenance
+source: report.md
+source_sha256: 3f9a…c21
+runxmd_version: 1.0.3
+generated_utc: 2026-08-27T09:14:22Z
+platform: linux-x86_64
+interpreters: {python: Python 3.14.5}
+non_deterministic_steps: []
+-->
+```
+
+`runxmd verify report_render.md` re-hashes `report.md` and exits **0** if it
+still matches, **3** if the source has changed since the render was generated
+(STALE), **2** if there's no header. Wire it into a pre-commit hook or CI so a
+stale render can't be trusted by accident.
 
 ---
 
@@ -552,9 +578,15 @@ runxmd --version
 
 ## Status & roadmap
 
-**Current: v1.0.2** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the full contract.
+**Current: v1.0.3** — see [`SPEC-v0.0.3.md`](./SPEC-v0.0.3.md) for the full
+contract. (The spec document keeps its own `v0.0.x` numbering, independent of
+the package version; `SPEC-v0.0.3.md` is the current one.)
 
-- ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `parse` / `validate` / `check`)
+- ✅ Parser, executor, CLI (`run` / `watch` / `agent` / `verify` / `parse` / `validate` / `check`)
+- ✅ Provenance headers + `runxmd verify` — a render carries the SHA-256 of its source
+- ✅ `run --strict` / `run --check` — use a document's outputs as a CI doctest
+- ✅ Output normalization (paths, `$HOME`, hostname, separators) + `redact:` — diffable renders
+- ✅ `run --pure` — refuse non-deterministic steps so the render is a computed fact
 - ✅ Plugins: shell, http, filesystem, llm
 - ✅ Inline language plugins: Python, Node.js, TypeScript, Ruby, Bash, Go, R, PHP, Perl, PowerShell
 - ✅ External script plugins: `@python_script`, `@node_script`, and one for every supported language

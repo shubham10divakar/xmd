@@ -162,21 +162,29 @@ quietly contradicts "compute once, read forever."
 
 *~3–4 days. B3 dominates.*
 
-### ⬜ B3. Opt-in sessions
+### ✅ B3. Opt-in sessions
 
 Per-step isolation is defensible but is the first thing every notebook user
 hits. `session: name` lets Property 2 become "order-independent *for the default
 configuration*" with sessions as a documented opt-out — stronger than either
 pole.
 
-- [ ] `session: name` step param.
-- [ ] `SessionPool` in the executor keyed by name, holding a long-lived
-      `subprocess.Popen` per language + sentinel-delimited eval protocol.
-- [ ] Default stays isolated.
-- [ ] Tests: variable defined in step N visible in step N+1 within a session;
-      isolation still holds without the param.
-- [ ] Time-box fallback: ship Python-only, note the rest as mechanical.
-- [ ] Paper: document the session case as an explicit opt-out of Property 2.
+- [x] `session: <name>` step param (parser already captures it; `_run_step`
+      consumes it, excluded from the params handed to the plugin alongside
+      `result` / `redact`).
+- [x] `_Sessions` accumulator in the executor: keyed by name, holds the
+      concatenated `run:` code and the last full stdout for that session.
+      A later same-session step runs `prelude + "\n" + run`, then its reported
+      output is `full_stdout` with the recorded prelude stdout prefix-subtracted.
+- [x] **Works for all 10 languages with zero REPL/pipe protocol** — chose
+      re-execution + prefix-subtraction over a `subprocess.Popen` pool. Trade-off
+      (documented): side effects in earlier session steps re-run.
+- [x] Default (no `session:`) stays fully isolated.
+- [x] `tests/test_sessions.py` — 6 tests: shared scope, default isolation still
+      NameErrors, step-2 output excludes step-1's, distinct names don't share,
+      `session` not leaked to plugin, 3-step accumulation. Suite 123 green.
+- [x] SPEC §6.2 + README "Sharing state between steps" — documented as an
+      explicit opt-out of Property 2.
 
 ### ⬜ B5. Content-addressed caching
 

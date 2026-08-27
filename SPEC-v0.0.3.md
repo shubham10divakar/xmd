@@ -131,6 +131,34 @@ append.
   exit 2 if any are present. Plugins declare this via
   `register(name, deterministic=False)`.
 
+### 6.2 `session:` — opt-in shared scope (v1.0.3)
+
+By default every step runs in a fresh subprocess with **no shared state** —
+`@workflow` Property 2 (order-independence of pure steps) holds *for the default
+configuration*.
+
+A step may set `session: <name>`. Steps that share a session name run with
+every earlier same-session step's `run:` code prepended, so a name bound in one
+step is visible in the next:
+
+```markdown
+- @python
+  session: calc
+  run: |
+    total = sum(range(100))
+
+- @python
+  session: calc
+  run: |
+    print("total:", total)     # sees `total` from the step above
+```
+
+Mechanism: re-execution with prefix-subtraction on stdout (the earlier steps'
+output is stripped from what this step reports). This needs no per-language REPL
+protocol, but **side effects in earlier session steps re-run** each time a later
+step in that session runs. Sessions are therefore an explicit opt-out of
+Property 2, not the default.
+
 ---
 
 ## 7. Out of scope (still deferred)

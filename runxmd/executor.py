@@ -37,6 +37,24 @@ from .parser import Document, parse, parse_scalar, to_source
 RUNTIME_NAMESPACE = "runtime."
 
 
+class _Sessions:
+    """Accumulated code + stdout per ``session:`` name, for a single run."""
+
+    def __init__(self):
+        self._code: dict = {}
+        self._out: dict = {}
+
+    def prelude(self, name: str) -> str:
+        return self._code.get(name, "")
+
+    def stdout(self, name: str) -> str:
+        return self._out.get(name, "")
+
+    def record(self, name: str, full_code: str, full_stdout: str) -> None:
+        self._code[name] = full_code
+        self._out[name] = full_stdout
+
+
 @dataclass
 class RunReport:
     """Outcome of a run, for callers that need more than the parsed Document.
@@ -258,10 +276,35 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
                 0, 2)
     ctx_summary = (ctx.get("context_memory") or {}).get("summary", "")
     params = {k: _subst_context(substitute(v, memory), ctx_summary)
-              for k, v in step.params.items() if k not in ("result", "redact")}
+              for k, v in step.params.items()
+              if k not in ("result", "redact", "session")}
+
+    # session: <name> — steps sharing a name run with every earlier session
+    # step's code prepended, so a variable defined in one is visible in the
+    # next. Default (no session:) stays fully isolated. Implemented by
+    # re-execution + output prefix-subtraction, so it works for every language
+    # with no REPL protocol; the trade-off is that side effects in earlier
+    # session steps re-run each time.
+    session = step.params.get("session")
+    raw_run = params.get("run")
+    sess = ctx.setdefault("_sessions", _Sessions()) if session else None
+    prelude = ""
+    if sess is not None and isinstance(raw_run, str):
+        prelude = sess.prelude(session)
+        if prelude:
+            params["run"] = prelude + "\n" + raw_run
+
     t0 = time.perf_counter()
     result = plugin(params, ctx)
     dur = int((time.perf_counter() - t0) * 1000)
+
+    if sess is not None and isinstance(raw_run, str):
+        full_code = prelude + "\n" + raw_run if prelude else raw_run
+        full_out = result.output or ""
+        prev = sess.stdout(session)
+        if prelude and full_out.startswith(prev):
+            result.output = full_out[len(prev):].lstrip("\n")
+        sess.record(session, full_code, full_out)
 
     if ctx.get("normalize", True):
         base = os.path.dirname(ctx.get("source_path", "") or "")

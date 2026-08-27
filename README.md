@@ -482,6 +482,29 @@ Mix languages freely in the same file:
 Each step runs in isolation. If an interpreter is missing, that step is marked ✗
 and execution continues with the next step.
 
+### Sharing state between steps — `session:`
+
+Isolation is the default (and the reason step order doesn't matter). When you
+*do* want a variable from one step visible in the next, give both steps the
+same `session:` name:
+
+```markdown
+- @python
+  session: calc
+  run: |
+    total = sum(range(100))
+
+- @python
+  session: calc
+  run: |
+    print("total:", total)     # sees `total` from the step above
+```
+
+Same-session steps re-run the earlier code as a prelude, so side effects in
+earlier session steps (prints, file writes, requests) happen again each time a
+later step runs. Use it for building up a computation; keep the default
+isolation for everything else.
+
 ---
 
 ## Watch mode

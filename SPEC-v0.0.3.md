@@ -159,6 +159,20 @@ protocol, but **side effects in earlier session steps re-run** each time a later
 step in that session runs. Sessions are therefore an explicit opt-out of
 Property 2, not the default.
 
+### 6.3 `--cache` — content-addressed step cache (v1.0.3)
+
+`runxmd run --cache` reuses a language step's cached stdout / stderr / exit code
+when nothing that can change its output has changed. The cache key is
+`sha256(runxmd_version, plugin, params, interpreter_version, script_bytes)`;
+entries live under `RUNXMD_CACHE_DIR` or `~/.cache/runxmd`. `--force` ignores
+existing entries (still refreshing them).
+
+Only language plugins (`@python` … `@powershell` and their `*_script` forms)
+are cacheable — they carry the subprocess cold-start cost and their output is a
+pure function of the key. `@shell`, `@read`, `@write`, `@http`, `@llm`, and
+`session:` steps are never cached. Failed runs and "interpreter not found"
+(exit 127) are not stored.
+
 ---
 
 ## 7. Out of scope (still deferred)

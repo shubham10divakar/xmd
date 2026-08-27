@@ -556,6 +556,7 @@ runxmd --version
 | `--strict` | `run`, `watch` | Exit non-zero if any step fails — use as a CI gate |
 | `--check` | `run` | Don't write; compare a fresh render against the committed one and exit non-zero on drift (a doctest for the whole document) |
 | `--pure` | `run`, `watch` | Refuse non-deterministic steps (`@http`, `@llm`); exit 2 if any are present |
+| `--cache` | `run`, `watch` | Reuse a cached result for a language step whose plugin, params, interpreter version and script bytes are unchanged (`--force` to ignore existing entries) |
 | `--raw` | `run`, `watch` | Don't normalize step output (keep absolute paths, `\`, `$HOME`, hostname verbatim) |
 | `--no-provenance` | `run`, `watch` | Omit the `runxmd-provenance` header from output files |
 

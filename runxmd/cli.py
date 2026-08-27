@@ -46,6 +46,11 @@ def main(argv=None) -> int:
     pr.add_argument("--pure", action="store_true",
                     help="refuse to run non-deterministic steps (@http, @llm); "
                          "the render is then a computed fact, not a sample")
+    pr.add_argument("--cache", action="store_true",
+                    help="reuse a cached result for a language step whose plugin, "
+                         "params, interpreter version and script bytes are unchanged")
+    pr.add_argument("--force", action="store_true",
+                    help="with --cache: ignore existing cache entries (still refresh them)")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
@@ -62,6 +67,10 @@ def main(argv=None) -> int:
                     help="do not normalize step output")
     pw.add_argument("--pure", action="store_true",
                     help="refuse to run non-deterministic steps (@http, @llm)")
+    pw.add_argument("--cache", action="store_true",
+                    help="reuse cached results for unchanged language steps")
+    pw.add_argument("--force", action="store_true",
+                    help="with --cache: ignore existing cache entries")
 
     pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
     pa.add_argument("file")
@@ -96,7 +105,7 @@ def main(argv=None) -> int:
                            save_context=not args.no_save,
                            add_provenance=not args.no_provenance,
                            check=args.check, normalize=not args.raw,
-                           pure=args.pure)
+                           pure=args.pure, cache=args.cache, force=args.force)
         report = getattr(doc, "report", None)
         if report is not None:
             if report.check_failed:
@@ -121,6 +130,8 @@ def main(argv=None) -> int:
             add_provenance=not args.no_provenance,
             normalize=not args.raw,
             pure=args.pure,
+            cache=args.cache,
+            force=args.force,
             out=flush,
         )
     elif args.cmd == "agent":

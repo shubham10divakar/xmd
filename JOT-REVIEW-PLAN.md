@@ -186,15 +186,27 @@ pole.
 - [x] SPEC §6.2 + README "Sharing state between steps" — documented as an
       explicit opt-out of Property 2.
 
-### ⬜ B5. Content-addressed caching
+### ✅ B5. Content-addressed caching
 
 Cheap; makes `runxmd watch` on a slow-step doc pleasant; gives the overhead
 section a number.
 
-- [ ] Hash `(plugin, params, referenced-script bytes, interpreter version)`.
-- [ ] Cache dir under doc or `~/.cache/runxmd`. Skip on hit unless `--force`.
-- [ ] Report cold vs warm run time using `duration_ms`.
-- [ ] Tests: hit skips execution; `--force` bypasses; script edit busts.
+- [x] New `runxmd/cache.py`. Key =
+      `sha256(runxmd_version, plugin, params, interpreter_version, script_bytes)`.
+- [x] Cache dir = `RUNXMD_CACHE_DIR` env or `~/.cache/runxmd`; atomic write via
+      `os.replace`.
+- [x] **Opt-in** `run --cache` / `watch --cache` (not on by default — silent
+      caching would miss external deps a step reads outside `path:`, the same
+      staleness class A1 fixes). `--force` ignores existing entries.
+- [x] Scope: language plugins only. `@shell` / `@read` / `@write` / `@http` /
+      `@llm` / `session:` steps never cached; exit-127 and failures not stored.
+- [x] `RunReport.cache_hits` / `cache_misses`; `· cache: N hit, M miss` line.
+- [x] `tests/test_cache.py` — 7 tests: hit skips execution (proven via an
+      append-marker file), `--force` re-executes, changed step code = miss,
+      prose-only edit still hits, cached output == fresh, no `--cache` = no
+      caching, `@print` not cached. Suite 130 green.
+- [ ] Cold-vs-warm timing number for the paper's overhead section — measure on
+      a doc with a genuinely slow step (`duration_ms` is already recorded).
 
 ### ⬜ B10. Remaining smaller items
 

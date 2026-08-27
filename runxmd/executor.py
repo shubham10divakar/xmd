@@ -29,6 +29,7 @@ import uuid
 
 from dataclasses import dataclass, field as _field
 
+from . import cache as _cache
 from . import normalize as _normalize
 from . import plugins, provenance
 from .memory import substitute
@@ -68,6 +69,8 @@ class RunReport:
     check_failed: bool = None                           # None → --check not run
     check_target: str = ""
     pure_refused: list = _field(default_factory=list)   # plugin names refused by --pure
+    cache_hits: int = 0
+    cache_misses: int = 0
 
 _SET_RE = re.compile(r"^set:\s*memory\.([a-zA-Z0-9_.]+)\s*=\s*(.+)$")
 _WRITE_RE = re.compile(r"^write(?:\(([^)]+)\))?$")
@@ -92,6 +95,8 @@ def run(
     check: bool = False,
     normalize: bool = True,
     pure: bool = False,
+    cache: bool = False,
+    force: bool = False,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
@@ -104,7 +109,8 @@ def run(
     mem_sec = doc.section("memory")
     memory = dict(mem_sec.memory) if mem_sec else {}
     ctx = {"memory": memory, "source_path": os.path.abspath(path),
-           "normalize": normalize, "pure": pure}
+           "normalize": normalize, "pure": pure,
+           "cache": cache, "force": force}
 
     ctx_sec = doc.section("context_memory")
     if ctx_sec is not None:
@@ -135,6 +141,12 @@ def run(
             r["plugin"] for r in records
             if r.get("code") == 2 and r["error"].startswith("refused:")
         ]
+
+    if cache:
+        stats = ctx.get("_cache_stats", {"hits": 0, "misses": 0})
+        report.cache_hits, report.cache_misses = stats["hits"], stats["misses"]
+        if stats["hits"] or stats["misses"]:
+            out(f"\n· cache: {stats['hits']} hit, {stats['misses']} miss")
 
     header = _provenance_header(source, path, wf_results) if add_provenance else ""
 
@@ -213,6 +225,8 @@ def watch(
     add_provenance: bool = True,
     normalize: bool = True,
     pure: bool = False,
+    cache: bool = False,
+    force: bool = False,
     out=print,
 ) -> None:
     """Re-run the document whenever it changes on disk."""
@@ -231,7 +245,8 @@ def watch(
                     out("\n↻ change detected")
                 run(path, workflow_name=workflow_name, write_back=write_back,
                     save_context=save_context, add_provenance=add_provenance,
-                    normalize=normalize, pure=pure, out=out)
+                    normalize=normalize, pure=pure, cache=cache, force=force,
+                    out=out)
                 runs += 1
                 try:
                     last = os.path.getmtime(path)
@@ -287,6 +302,22 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
     # session steps re-run each time.
     session = step.params.get("session")
     raw_run = params.get("run")
+
+    # content-addressed cache (opt-in: --cache). Language plugins only, never
+    # for session steps (their effective code varies with the prelude).
+    cache_key = None
+    if ctx.get("cache") and not session and _cache.cacheable(step.plugin):
+        stats = ctx.setdefault("_cache_stats", {"hits": 0, "misses": 0})
+        cache_key = _cache.key_for(step.plugin, params, ctx)
+        if not ctx.get("force"):
+            hit = _cache.load(cache_key)
+            if hit is not None:
+                stats["hits"] += 1
+                out(f"{label} ✓ (cached)")
+                _emit(hit["output"] if hit["ok"] else hit["error"], out)
+                return hit["ok"], hit["output"], hit["error"], 0, hit["code"]
+        stats["misses"] += 1
+
     sess = ctx.setdefault("_sessions", _Sessions()) if session else None
     prelude = ""
     if sess is not None and isinstance(raw_run, str):
@@ -313,6 +344,10 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
             result.output, base_dir=base, redact=redact)
         result.error = _normalize.normalize_output(
             result.error, base_dir=base, redact=redact)
+
+    if cache_key is not None and result.ok and result.code != 127:
+        _cache.store(cache_key, ok=result.ok, output=result.output or "",
+                     error=result.error or "", code=result.code)
 
     if result.ok:
         out(f"{label} ✓")

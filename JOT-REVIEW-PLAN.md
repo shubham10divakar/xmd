@@ -106,19 +106,29 @@ push."
       diff now catches a step that started failing even when it prints nothing.
 - [x] `tests/test_strict_check.py` — 10 tests. Full suite 97 green.
 
-### ⬜ A4. Output normalization
+### ✅ A4. Output normalization
 
 Committed renders currently contain Windows separators and absolute home paths —
 not diffable across machines, which kills the `write` projection's purpose.
 
-- [ ] New `runxmd/normalize.py`, applied to each step's captured output before
-      any writer. On by default, `--raw` to disable.
-- [ ] Rules: absolute paths under doc dir → relative; `\` → `/` in path-like
-      tokens; `$HOME` / home-prefix → `~`; strip wall-clock durations from
-      render (keep in provenance).
-- [ ] `redact:` step param (regexes / literals) for volatile output.
-- [ ] Regenerate the two committed showcase renders in the same PR.
-- [ ] Tests: golden input/output per rule; `--raw` bypass.
+- [x] New `runxmd/normalize.py`, applied to each step's stdout/stderr in
+      `_run_step` before it reaches any writer or the context log. On by
+      default; `run --raw` / `normalize=False` disables it.
+- [x] Rules: paths under the doc dir → relative; home dir → `~/`; hostname →
+      `HOST`; `\` → `/` inside path-like tokens (guarded by a trailing
+      `.ext` so escaped strings like `'a\nb'` are left alone).
+- [x] `redact:` step param — one literal or `/regex/` per line; replaced with
+      `[redacted]`. Stripped from the params handed to the plugin.
+- [x] Regenerated `examples/showcase/file_checks_test_render.md` — `scripts\…`
+      → `scripts/…`, provenance header added, `runxmd verify` passes.
+- [x] `tests/test_normalize.py` — 12 tests (per-rule + integration + `--raw`).
+      Full suite 109 green.
+- [ ] `readme_showcase_render.md` NOT regenerated here — `node` is absent on
+      this machine, so a fresh run would corrupt it. Regenerate on a box with
+      all 10 interpreters. It also needs `redact:` for the `modified:` mtimes
+      it prints (volatile) — good demo of the param.
+- [ ] Strip wall-clock durations — deferred; too broad a rule to apply safely
+      without a real use case in hand.
 
 ### ⬜ A6. Separate deterministic core from non-deterministic surface
 

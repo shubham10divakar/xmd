@@ -40,6 +40,9 @@ def main(argv=None) -> int:
     pr.add_argument("--check", action="store_true",
                     help="don't write; compare a fresh render against the committed "
                          "one and exit non-zero if they differ")
+    pr.add_argument("--raw", action="store_true",
+                    help="do not normalize step output (keep absolute paths, "
+                         "backslashes, home dir, hostname as-is)")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
@@ -52,6 +55,8 @@ def main(argv=None) -> int:
                     help="do not append run records to @context_memory (default: append if section present)")
     pw.add_argument("--no-provenance", action="store_true",
                     help="omit the runxmd-provenance header from output files")
+    pw.add_argument("--raw", action="store_true",
+                    help="do not normalize step output")
 
     pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
     pa.add_argument("file")
@@ -85,7 +90,7 @@ def main(argv=None) -> int:
                            write_back=args.write_back,
                            save_context=not args.no_save,
                            add_provenance=not args.no_provenance,
-                           check=args.check)
+                           check=args.check, normalize=not args.raw)
         report = getattr(doc, "report", None)
         if report is not None:
             if report.check_failed:
@@ -104,6 +109,7 @@ def main(argv=None) -> int:
             write_back=args.write_back,
             save_context=not args.no_save,
             add_provenance=not args.no_provenance,
+            normalize=not args.raw,
             out=flush,
         )
     elif args.cmd == "agent":

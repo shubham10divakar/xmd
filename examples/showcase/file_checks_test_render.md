@@ -1,3 +1,13 @@
+<!-- runxmd-provenance
+source: file_checks_test.md
+source_sha256: 04d870200de2d7711f1f7bdb027287d6dde30225b0132e2137491e63a6281be3
+runxmd_version: 1.0.2
+generated_utc: 2026-08-27T12:23:36Z
+platform: windows-amd64
+interpreters: {python: Python 3.14.6}
+non_deterministic_steps: []
+-->
+
 # File Existence Checks
 
 This document demonstrates checking whether files exist in a directory —
@@ -18,8 +28,8 @@ All paths are resolved relative to this file's directory.
 The most basic guardrail: check one file before proceeding.
 
 === Simple File Check ===
-  FOUND    : scripts\basic.py
-  Size     : 648 bytes
+  FOUND    : scripts/basic.py
+  Size     : 669 bytes
   Is file  : True
 
   GUARDRAIL PASS: required file is present
@@ -37,10 +47,10 @@ Check a list of required files and flag any that are missing.
 
 File                                     Status         Size
 --------------------------------------------------------------
-  scripts/basic.py                       FOUND         648 B
-  scripts/medium_node.js                 FOUND       1,659 B
-  scripts/advanced_fibonacci.py          FOUND       1,384 B
-  scripts/medium_powershell.ps1          FOUND       1,189 B
+  scripts/basic.py                       FOUND         669 B
+  scripts/medium_node.js                 FOUND       1,697 B
+  scripts/advanced_fibonacci.py          FOUND       1,422 B
+  scripts/medium_powershell.ps1          FOUND       1,217 B
 
 Optional files (missing is OK):
   scripts/nonexistent.sh                 absent
@@ -73,27 +83,27 @@ Runs `scripts/advanced_file_check.py` which performs:
 === File Existence Check ===
 
   [FOUND  ] Basic Python script
-           size     : 648 bytes
-           modified : 2026-06-04 23:33
+           size     : 669 bytes
+           modified : 2026-08-27 16:59
            readable : yes
 
   [FOUND  ] Medium Node.js script
-           size     : 1,659 bytes
-           modified : 2026-06-04 23:33
+           size     : 1,697 bytes
+           modified : 2026-08-27 16:59
            readable : yes
 
   [FOUND  ] Advanced Fibonacci script
-           size     : 1,384 bytes
-           modified : 2026-06-04 23:33
+           size     : 1,422 bytes
+           modified : 2026-08-27 16:59
            readable : yes
 
   [FOUND  ] PowerShell script
-           size     : 1,189 bytes
-           modified : 2026-06-04 23:33
+           size     : 1,217 bytes
+           modified : 2026-08-27 16:59
            readable : yes
 
   [MISSING] Non-existent file (expected missing)
-           path     : scripts\nonexistent.sh
+           path     : scripts/nonexistent.sh
 
 Result : 4/5 found   [PASS]
 
@@ -102,14 +112,14 @@ Result : 4/5 found   [PASS]
   Total files : 5
   Extensions  : .js, .ps1, .py
 
-  .js            1 file(s)   1,659 bytes total
-    medium_node.js                       1,659 bytes   2026-06-04 23:33
-  .ps1           1 file(s)   1,189 bytes total
-    medium_powershell.ps1                1,189 bytes   2026-06-04 23:33
-  .py            3 file(s)   6,009 bytes total
-    advanced_fibonacci.py                1,384 bytes   2026-06-04 23:33
-    advanced_file_check.py               3,977 bytes   2026-06-04 23:33
-    basic.py                               648 bytes   2026-06-04 23:33
+  .js            1 file(s)   1,697 bytes total
+    medium_node.js                       1,697 bytes   2026-08-27 16:59
+  .ps1           1 file(s)   1,217 bytes total
+    medium_powershell.ps1                1,217 bytes   2026-08-27 16:59
+  .py            3 file(s)   6,179 bytes total
+    advanced_fibonacci.py                1,422 bytes   2026-08-27 16:59
+    advanced_file_check.py               4,088 bytes   2026-08-27 16:59
+    basic.py                               669 bytes   2026-08-27 16:59
 
 === Guardrail Summary ===
 

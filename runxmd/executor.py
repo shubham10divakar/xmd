@@ -29,6 +29,7 @@ import uuid
 
 from dataclasses import dataclass, field as _field
 
+from . import normalize as _normalize
 from . import plugins, provenance
 from .memory import substitute
 from .parser import Document, parse, parse_scalar, to_source
@@ -70,6 +71,7 @@ def run(
     save_context: bool = True,
     add_provenance: bool = True,
     check: bool = False,
+    normalize: bool = True,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
@@ -81,7 +83,8 @@ def run(
 
     mem_sec = doc.section("memory")
     memory = dict(mem_sec.memory) if mem_sec else {}
-    ctx = {"memory": memory, "source_path": os.path.abspath(path)}
+    ctx = {"memory": memory, "source_path": os.path.abspath(path),
+           "normalize": normalize}
 
     ctx_sec = doc.section("context_memory")
     if ctx_sec is not None:
@@ -184,6 +187,7 @@ def watch(
     write_back: bool = False,
     save_context: bool = True,
     add_provenance: bool = True,
+    normalize: bool = True,
     out=print,
 ) -> None:
     """Re-run the document whenever it changes on disk."""
@@ -201,7 +205,8 @@ def watch(
                 if last is not None:
                     out("\n↻ change detected")
                 run(path, workflow_name=workflow_name, write_back=write_back,
-                    save_context=save_context, add_provenance=add_provenance, out=out)
+                    save_context=save_context, add_provenance=add_provenance,
+                    normalize=normalize, out=out)
                 runs += 1
                 try:
                     last = os.path.getmtime(path)
@@ -241,10 +246,19 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
         return False, "", f"unknown plugin: @{step.plugin}", 0, 127
     ctx_summary = (ctx.get("context_memory") or {}).get("summary", "")
     params = {k: _subst_context(substitute(v, memory), ctx_summary)
-              for k, v in step.params.items() if k != "result"}
+              for k, v in step.params.items() if k not in ("result", "redact")}
     t0 = time.perf_counter()
     result = plugin(params, ctx)
     dur = int((time.perf_counter() - t0) * 1000)
+
+    if ctx.get("normalize", True):
+        base = os.path.dirname(ctx.get("source_path", "") or "")
+        redact = step.params.get("redact", ())
+        result.output = _normalize.normalize_output(
+            result.output, base_dir=base, redact=redact)
+        result.error = _normalize.normalize_output(
+            result.error, base_dir=base, redact=redact)
+
     if result.ok:
         out(f"{label} ✓")
         _emit(result.output, out)

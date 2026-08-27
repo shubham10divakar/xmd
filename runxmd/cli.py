@@ -35,6 +35,11 @@ def main(argv=None) -> int:
                     help="do not append run records to @context_memory (default: append if section present)")
     pr.add_argument("--no-provenance", action="store_true",
                     help="omit the runxmd-provenance header from output files")
+    pr.add_argument("--strict", action="store_true",
+                    help="exit non-zero if any step fails (for CI / doc-tests)")
+    pr.add_argument("--check", action="store_true",
+                    help="don't write; compare a fresh render against the committed "
+                         "one and exit non-zero if they differ")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
@@ -76,9 +81,19 @@ def main(argv=None) -> int:
         from . import checker
         checker.check()
     elif args.cmd == "run":
-        executor.run(args.file, workflow_name=args.workflow, write_back=args.write_back,
-                     save_context=not args.no_save,
-                     add_provenance=not args.no_provenance)
+        doc = executor.run(args.file, workflow_name=args.workflow,
+                           write_back=args.write_back,
+                           save_context=not args.no_save,
+                           add_provenance=not args.no_provenance,
+                           check=args.check)
+        report = getattr(doc, "report", None)
+        if report is not None:
+            if report.check_failed:
+                return 1
+            if args.strict and not report.all_ok:
+                n = len(report.failed_steps)
+                print(f"\n✗ strict: {n} step(s) failed")
+                return 1
     elif args.cmd == "watch":
         flush = lambda *a: print(*a, flush=True)  # noqa: E731 — keep watch output live
         executor.watch(

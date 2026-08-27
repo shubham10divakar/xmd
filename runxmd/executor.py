@@ -27,11 +27,27 @@ import re
 import time
 import uuid
 
+from dataclasses import dataclass, field as _field
+
 from . import plugins, provenance
 from .memory import substitute
 from .parser import Document, parse, parse_scalar, to_source
 
 RUNTIME_NAMESPACE = "runtime."
+
+
+@dataclass
+class RunReport:
+    """Outcome of a run, for callers that need more than the parsed Document.
+
+    ``run()`` still returns the ``Document`` (unchanged public contract); it
+    also attaches an instance of this as ``doc.report`` so the CLI can decide
+    an exit code without re-deriving anything.
+    """
+    all_ok: bool = True
+    failed_steps: list = _field(default_factory=list)   # (workflow, idx, plugin)
+    check_failed: bool = None                           # None → --check not run
+    check_target: str = ""
 
 _SET_RE = re.compile(r"^set:\s*memory\.([a-zA-Z0-9_.]+)\s*=\s*(.+)$")
 _WRITE_RE = re.compile(r"^write(?:\(([^)]+)\))?$")
@@ -53,11 +69,14 @@ def run(
     write_back: bool = False,
     save_context: bool = True,
     add_provenance: bool = True,
+    check: bool = False,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
         source = f.read()
     doc = parse(source)
+    report = RunReport()
+    doc.report = report
     run_id = uuid.uuid4().hex[:4]
 
     mem_sec = doc.section("memory")
@@ -83,8 +102,21 @@ def run(
     for wf in workflows:
         ok, records = run_workflow(wf, memory, ctx, out)
         wf_results[wf.name or ""] = records
+        if not ok:
+            report.all_ok = False
+            report.failed_steps += [
+                (wf.name or "", r["idx"], r["plugin"])
+                for r in records if not r["ok"]
+            ]
 
     header = _provenance_header(source, path, wf_results) if add_provenance else ""
+
+    # --check: compare a fresh default render against the committed one and
+    # report drift. Nothing is written, no hooks run — this is a read-only
+    # doctest for the whole document.
+    if check:
+        _run_check(source, wf_results, path, doc, header, report, out)
+        return doc
 
     hooks_sec = doc.section("on_done")
     output_written = False
@@ -193,20 +225,20 @@ def run_steps(steps, memory, ctx, out) -> tuple:
     """Run a list of steps top-to-bottom; returns (all_ok, records)."""
     records = []
     for idx, step in enumerate(steps, 1):
-        ok, output, error, dur = _run_step(idx, step, memory, ctx, out)
+        ok, output, error, dur, code = _run_step(idx, step, memory, ctx, out)
         records.append({"idx": idx, "plugin": step.plugin,
                         "output": output, "error": error, "ok": ok,
-                        "duration_ms": dur})
+                        "duration_ms": dur, "code": code})
     return all(r["ok"] for r in records), records
 
 
 def _run_step(idx, step, memory, ctx, out) -> tuple:
-    """Run one step; returns (ok, output, error, duration_ms)."""
+    """Run one step; returns (ok, stdout, stderr, duration_ms, exit_code)."""
     plugin = plugins.get(step.plugin)
     label = f"  step {idx} @{step.plugin}"
     if plugin is None:
         out(f"{label} ✗ unknown plugin")
-        return False, "", f"unknown plugin: @{step.plugin}", 0
+        return False, "", f"unknown plugin: @{step.plugin}", 0, 127
     ctx_summary = (ctx.get("context_memory") or {}).get("summary", "")
     params = {k: _subst_context(substitute(v, memory), ctx_summary)
               for k, v in step.params.items() if k != "result"}
@@ -219,7 +251,7 @@ def _run_step(idx, step, memory, ctx, out) -> tuple:
     else:
         out(f"{label} ✗ (exit {result.code})")
         _emit(result.error or result.output, out)
-    return result.ok, result.output or "", result.error or "", dur
+    return result.ok, result.output or "", result.error or "", dur, result.code
 
 
 def _subst_context(value, summary: str):
@@ -349,17 +381,68 @@ def _render_source(source: str, wf_results: dict) -> str:
     return "\n".join(out_lines) + "\n"
 
 
+def _render_content(source: str, wf_results: dict, header: str = "") -> str:
+    content = _render_source(source, wf_results)
+    return provenance.prepend(content, header) if header else content
+
+
 def _write_render_doc(source: str, wf_results: dict, out_path: str, out,
                       header: str = "") -> None:
-    content = _render_source(source, wf_results)
-    if header:
-        content = provenance.prepend(content, header)
+    content = _render_content(source, wf_results, header)
     parent = os.path.dirname(out_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(content)
     out(f"\n· render written → {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# --check — read-only drift check against the committed render (JOT plan A2)
+# ---------------------------------------------------------------------------
+
+def _default_render_path(source_path: str) -> str:
+    import pathlib
+    p = pathlib.Path(source_path)
+    return str(p.parent / (p.stem + "_render" + p.suffix))
+
+
+def _run_check(source, wf_results, source_path, doc, header, report, out) -> None:
+    # Honour an explicit render(name) hook target if one is set.
+    target = _default_render_path(source_path)
+    hooks_sec = doc.section("on_done")
+    if hooks_sec:
+        for h in hooks_sec.hooks:
+            m = _RENDER_RE.match(h.strip())
+            if m and (m.group(1) or "").strip():
+                target = (m.group(1) or "").strip()
+                break
+    report.check_target = target
+
+    fresh = provenance.strip_header(_render_content(source, wf_results, header))
+    if not os.path.isfile(target):
+        report.check_failed = True
+        out(f"✗ check: {target} does not exist — run `runxmd run {source_path}` to create it")
+        return
+    with open(target, encoding="utf-8") as f:
+        committed = provenance.strip_header(f.read())
+
+    if fresh == committed:
+        report.check_failed = False
+        out(f"✓ check: {target} is up to date")
+        return
+
+    report.check_failed = True
+    import difflib
+    diff = list(difflib.unified_diff(
+        committed.splitlines(), fresh.splitlines(),
+        fromfile=f"{target} (committed)", tofile="fresh run", lineterm="",
+    ))
+    out(f"✗ check: {target} is stale — {sum(1 for d in diff if d.startswith(('+', '-')) and not d.startswith(('+++', '---')))} changed line(s)")
+    for line in diff[:40]:
+        out("    " + line)
+    if len(diff) > 40:
+        out(f"    … ({len(diff) - 40} more diff lines)")
 
 
 # ---------------------------------------------------------------------------
@@ -397,13 +480,21 @@ def _write_output_doc(doc, wf_results: dict, out_path: str, out,
             continue
         records = wf_results.get(sec.name or "", [])
         for i, step in enumerate(sec.steps):
-            step.params.pop("result", None)
+            for stale in ("result", "status", "exit_code", "stderr"):
+                step.params.pop(stale, None)
             if i >= len(records):
                 continue
             r = records[i]
             text = (r["output"] if r["ok"] else r["error"]).strip()
             if text:
                 step.params["result"] = text
+            # Record status + exit code so a re-run diff catches a step that
+            # started failing even when it prints nothing (JOT plan A2).
+            step.params["status"] = "ok" if r["ok"] else "error"
+            step.params["exit_code"] = r.get("code", 0)
+            err = (r.get("error") or "").strip()
+            if err and err != text:
+                step.params["stderr"] = err
     content = to_source(new_doc)
     if header:
         content = provenance.prepend(content, header)

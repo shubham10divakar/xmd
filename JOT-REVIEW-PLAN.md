@@ -85,22 +85,26 @@ non_deterministic_steps: []
 -->
 ```
 
-### ⬜ A2. Strict mode + failure-preserving `write` projection
+### ✅ A2. Strict mode + failure-preserving `write` projection
 
 A failed step is recorded and the run continues (correct for docs, unusable as a
 CI doc-test). Best adoption path: "your README's outputs are checked on every
 push."
 
-- [ ] `run --strict`: any step failure → `main()` returns non-zero.
-- [ ] `run --check`: render to a buffer, compare against the committed sibling,
-      exit 1 on diff. (`runxmd` as a doctest for the whole document.)
-- [ ] Wire `main()` to consume `run_workflow`'s aggregate ok under `--strict`
-      (`cli.py:69–71`).
-- [ ] Add `code` + separate `stderr` to each step record dict (`_run_step`).
-- [ ] `_write_output_doc`: inject `status:` and `exit_code:` alongside
-      `result:` — otherwise diffs miss failures that print nothing.
-- [ ] Tests: failing step with/without `--strict`; `--check` on matching and
-      drifted renders.
+- [x] `run --strict`: any step failure → `main()` returns 1 (with a
+      `✗ strict: N step(s) failed` line).
+- [x] `run --check`: build a fresh render in memory, `strip_header` both sides
+      (so `generated_utc` doesn't force a diff), compare against the committed
+      sibling (or the `render(name)` hook target), print a unified diff, exit 1
+      on drift or if the render is missing. Writes nothing.
+- [x] New `RunReport` (attached as `doc.report`): `all_ok`, `failed_steps`
+      `[(workflow, idx, plugin)]`, `check_failed`, `check_target`. `run()` still
+      returns the `Document` — non-breaking.
+- [x] `_run_step` now returns `exit_code`; each step record carries `code`.
+- [x] `_write_output_doc`: injects `status:` (`ok`/`error`), `exit_code:`, and
+      `stderr:` (when it differs from `result:`) alongside `result:` — a re-run
+      diff now catches a step that started failing even when it prints nothing.
+- [x] `tests/test_strict_check.py` — 10 tests. Full suite 97 green.
 
 ### ⬜ A4. Output normalization
 

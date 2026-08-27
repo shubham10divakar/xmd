@@ -33,6 +33,8 @@ def main(argv=None) -> int:
                     help="write runtime.* memory back into the source file (default: off)")
     pr.add_argument("--no-save", action="store_true",
                     help="do not append run records to @context_memory (default: append if section present)")
+    pr.add_argument("--no-provenance", action="store_true",
+                    help="omit the runxmd-provenance header from output files")
 
     pw = sub.add_parser("watch", help="re-run the file whenever it changes")
     pw.add_argument("file")
@@ -43,6 +45,8 @@ def main(argv=None) -> int:
                     help="write runtime.* memory back into the source file (default: off)")
     pw.add_argument("--no-save", action="store_true",
                     help="do not append run records to @context_memory (default: append if section present)")
+    pw.add_argument("--no-provenance", action="store_true",
+                    help="omit the runxmd-provenance header from output files")
 
     pa = sub.add_parser("agent", help="goal -> tasks -> execute -> memory (Layer 7)")
     pa.add_argument("file")
@@ -61,6 +65,11 @@ def main(argv=None) -> int:
     pv = sub.add_parser("validate", help="check the file parses; list sections")
     pv.add_argument("file")
 
+    pvf = sub.add_parser("verify", help="check a render still matches its source")
+    pvf.add_argument("file", help="the _render / _results / _output file to check")
+    pvf.add_argument("--source",
+                     help="source document (default: read from the render's provenance header)")
+
     args = p.parse_args(argv)
 
     if args.cmd == "check":
@@ -68,7 +77,8 @@ def main(argv=None) -> int:
         checker.check()
     elif args.cmd == "run":
         executor.run(args.file, workflow_name=args.workflow, write_back=args.write_back,
-                     save_context=not args.no_save)
+                     save_context=not args.no_save,
+                     add_provenance=not args.no_provenance)
     elif args.cmd == "watch":
         flush = lambda *a: print(*a, flush=True)  # noqa: E731 — keep watch output live
         executor.watch(
@@ -78,6 +88,7 @@ def main(argv=None) -> int:
             max_runs=args.max_runs,
             write_back=args.write_back,
             save_context=not args.no_save,
+            add_provenance=not args.no_provenance,
             out=flush,
         )
     elif args.cmd == "agent":
@@ -94,6 +105,11 @@ def main(argv=None) -> int:
         print(json.dumps(asdict(_load(args.file)), indent=2))
     elif args.cmd == "validate":
         return _validate(args.file)
+    elif args.cmd == "verify":
+        from . import provenance
+        code, msg = provenance.verify(args.file, args.source)
+        print(msg)
+        return code
     else:
         p.print_help()
     return 0

@@ -27,7 +27,7 @@ import re
 import time
 import uuid
 
-from . import plugins
+from . import plugins, provenance
 from .memory import substitute
 from .parser import Document, parse, parse_scalar, to_source
 
@@ -52,6 +52,7 @@ def run(
     workflow_name: str = None,
     write_back: bool = False,
     save_context: bool = True,
+    add_provenance: bool = True,
     out=print,
 ) -> Document:
     with open(path, encoding="utf-8") as f:
@@ -83,12 +84,15 @@ def run(
         ok, records = run_workflow(wf, memory, ctx, out)
         wf_results[wf.name or ""] = records
 
+    header = _provenance_header(source, path, wf_results) if add_provenance else ""
+
     hooks_sec = doc.section("on_done")
     output_written = False
     if hooks_sec:
         output_written = _apply_hooks(
             hooks_sec.hooks, memory, out,
             doc=doc, wf_results=wf_results, source_path=path, source=source,
+            header=header,
         )
 
     # Default: render mode — prose preserved, steps replaced with results.
@@ -103,7 +107,7 @@ def run(
             _write_render_doc(
                 source, wf_results,
                 str(_p.parent / (_p.stem + "_render" + _p.suffix)),
-                out,
+                out, header=header,
             )
 
     # Append the run's captured records to @context_memory (raw jsonl log).
@@ -147,6 +151,7 @@ def watch(
     max_runs: int = 0,
     write_back: bool = False,
     save_context: bool = True,
+    add_provenance: bool = True,
     out=print,
 ) -> None:
     """Re-run the document whenever it changes on disk."""
@@ -164,7 +169,7 @@ def watch(
                 if last is not None:
                     out("\n↻ change detected")
                 run(path, workflow_name=workflow_name, write_back=write_back,
-                    save_context=save_context, out=out)
+                    save_context=save_context, add_provenance=add_provenance, out=out)
                 runs += 1
                 try:
                     last = os.path.getmtime(path)
@@ -229,6 +234,29 @@ def _emit(text, out) -> None:
     if text and text.strip():
         for ln in text.rstrip().splitlines():
             out(f"      {ln}")
+
+
+# ---------------------------------------------------------------------------
+# Provenance — every output file records what it is a render of (JOT plan A1)
+# ---------------------------------------------------------------------------
+
+def _provenance_header(source: str, source_path: str, wf_results: dict) -> str:
+    """Build the provenance HTML comment for this run's output files."""
+    names: set = set()
+    nd: list = []
+    gi = 0
+    for recs in wf_results.values():
+        for r in recs:
+            gi += 1
+            names.add(r["plugin"])
+            if r["plugin"] in provenance.NON_DETERMINISTIC:
+                nd.append(gi)
+    return provenance.build(
+        source,
+        source_name=os.path.basename(source_path) if source_path else "",
+        plugin_names=names,
+        non_deterministic_steps=nd,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -321,8 +349,11 @@ def _render_source(source: str, wf_results: dict) -> str:
     return "\n".join(out_lines) + "\n"
 
 
-def _write_render_doc(source: str, wf_results: dict, out_path: str, out) -> None:
+def _write_render_doc(source: str, wf_results: dict, out_path: str, out,
+                      header: str = "") -> None:
     content = _render_source(source, wf_results)
+    if header:
+        content = provenance.prepend(content, header)
     parent = os.path.dirname(out_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -335,7 +366,8 @@ def _write_render_doc(source: str, wf_results: dict, out_path: str, out) -> None
 # Results mode — step outputs only, no prose
 # ---------------------------------------------------------------------------
 
-def _write_results_doc(wf_results: dict, out_path: str, out) -> None:
+def _write_results_doc(wf_results: dict, out_path: str, out,
+                       header: str = "") -> None:
     blocks = []
     for records in wf_results.values():
         for r in records:
@@ -343,6 +375,8 @@ def _write_results_doc(wf_results: dict, out_path: str, out) -> None:
             if text:
                 blocks.append(text)
     content = "\n\n".join(blocks) + "\n"
+    if header:
+        content = provenance.prepend(content, header)
     parent = os.path.dirname(out_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -355,7 +389,8 @@ def _write_results_doc(wf_results: dict, out_path: str, out) -> None:
 # Write mode — replica with result: fields injected
 # ---------------------------------------------------------------------------
 
-def _write_output_doc(doc, wf_results: dict, out_path: str, out) -> None:
+def _write_output_doc(doc, wf_results: dict, out_path: str, out,
+                      header: str = "") -> None:
     new_doc = copy.deepcopy(doc)
     for sec in new_doc.sections:
         if sec.kind != "workflow":
@@ -369,11 +404,14 @@ def _write_output_doc(doc, wf_results: dict, out_path: str, out) -> None:
             text = (r["output"] if r["ok"] else r["error"]).strip()
             if text:
                 step.params["result"] = text
+    content = to_source(new_doc)
+    if header:
+        content = provenance.prepend(content, header)
     parent = os.path.dirname(out_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
-        f.write(to_source(new_doc))
+        f.write(content)
     out(f"\n· output written → {out_path}")
 
 
@@ -382,7 +420,8 @@ def _write_output_doc(doc, wf_results: dict, out_path: str, out) -> None:
 # ---------------------------------------------------------------------------
 
 def _apply_hooks(hooks, memory, out,
-                 doc=None, wf_results=None, source_path=None, source=None) -> bool:
+                 doc=None, wf_results=None, source_path=None, source=None,
+                 header="") -> bool:
     """Process @on_done hooks; returns True if any output hook ran."""
     import pathlib
     output_written = False
@@ -402,7 +441,7 @@ def _apply_hooks(hooks, memory, out,
             else:
                 p = pathlib.Path(source_path)
                 out_path = str(p.parent / (p.stem + "_render" + p.suffix))
-            _write_render_doc(source, wf_results, out_path, out)
+            _write_render_doc(source, wf_results, out_path, out, header=header)
             output_written = True
             continue
 
@@ -418,7 +457,7 @@ def _apply_hooks(hooks, memory, out,
             else:
                 p = pathlib.Path(source_path)
                 out_path = str(p.parent / (p.stem + "_results" + p.suffix))
-            _write_results_doc(wf_results, out_path, out)
+            _write_results_doc(wf_results, out_path, out, header=header)
             output_written = True
             continue
 
@@ -434,7 +473,7 @@ def _apply_hooks(hooks, memory, out,
             else:
                 p = pathlib.Path(source_path)
                 out_path = str(p.parent / (p.stem + "_output" + p.suffix))
-            _write_output_doc(doc, wf_results, out_path, out)
+            _write_output_doc(doc, wf_results, out_path, out, header=header)
             # write alone does NOT suppress default render
             continue
 
